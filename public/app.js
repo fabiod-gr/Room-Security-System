@@ -243,6 +243,12 @@ async function setCaptureFavorite(id, favorite) {
   });
 }
 
+async function deleteCapture(id) {
+  return api(`/api/captures/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+}
+
 function renderCaptures(captures) {
   capturesList.replaceChildren();
   if (!captures.length) {
@@ -310,6 +316,24 @@ refreshButton.addEventListener("click", () => {
 });
 
 capturesList.addEventListener("click", async (event) => {
+  const deleteButton = event.target.closest(".delete-button");
+  if (deleteButton) {
+    const card = deleteButton.closest(".capture-card");
+    deleteButton.disabled = true;
+
+    try {
+      await deleteCapture(card.dataset.captureId);
+      card.remove();
+      if (!capturesList.children.length) {
+        renderCaptures([]);
+      }
+    } catch (error) {
+      deleteButton.disabled = false;
+      console.error(error);
+    }
+    return;
+  }
+
   const button = event.target.closest(".favorite-button");
   if (!button) return;
 

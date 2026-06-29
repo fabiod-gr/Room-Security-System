@@ -98,6 +98,24 @@ def update_capture_favorite(capture_id, favorite):
     return None
 
 
+def delete_capture(capture_id):
+    captures = prune_old_captures()
+    kept = []
+    deleted = None
+
+    for capture in captures:
+        if capture.get("id") == capture_id:
+            deleted = capture
+            capture_path(capture).unlink(missing_ok=True)
+            continue
+        kept.append(capture)
+
+    if deleted:
+        write_json(MANIFEST_PATH, kept)
+
+    return deleted
+
+
 def safe_filename(name):
     cleaned = re.sub(r"[^a-zA-Z0-9_.-]+", "-", name).strip(".-")
     return cleaned or "capture.webm"
@@ -237,6 +255,23 @@ class SecurityHandler(SimpleHTTPRequestHandler):
                 return
 
             self.send_json(capture)
+            return
+
+        self.send_error(404, "Not found")
+
+    def do_DELETE(self):
+        parsed = urlparse(self.path)
+        if parsed.path.startswith("/api/captures/"):
+            capture_id = unquote(parsed.path.removeprefix("/api/captures/"))
+
+            with state_lock:
+                capture = delete_capture(capture_id)
+
+            if not capture:
+                self.send_json({"error": "Capture not found."}, status=404)
+                return
+
+            self.send_json({"deleted": True, "id": capture_id})
             return
 
         self.send_error(404, "Not found")

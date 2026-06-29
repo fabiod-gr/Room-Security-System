@@ -20,6 +20,7 @@ Y'know, it really pisses me off when people enter my room whenever I'm not home 
 - Manually record a clip when the camera is on and the system is unarmed.
 - Upload captured clips to the server and list them on the dashboard.
 - Favorite important clips so they are kept.
+- Delete unwanted clips from the dashboard.
 - Automatically delete non-favorited clips after 30 days.
 
 ## Run

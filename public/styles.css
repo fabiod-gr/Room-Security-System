@@ -312,6 +312,36 @@ h1 {
   font-weight: 700;
 }
 
+.capture-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.delete-button {
+  display: inline-grid;
+  place-items: center;
+  width: 42px;
+  min-width: 42px;
+  padding: 0;
+  border-color: rgba(255, 92, 92, 0.45);
+  color: var(--danger);
+}
+
+.delete-button svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
+.delete-button:hover {
+  background: rgba(255, 92, 92, 0.16);
+}
+
 .empty-state {
   border: 1px dashed var(--line);
   border-radius: 8px;
