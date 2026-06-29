@@ -16,8 +16,8 @@ A small webcam security dashboard that runs locally in your browser and stores c
 
 - Arm and unarm the room monitor from the dashboard.
 - Start a webcam feed directly in the browser.
-- Detect motion while armed and record short WebM video clips.
-- Manually record a clip at any time after the camera starts.
+- Detect motion while armed and record short WebM video clips only when motion is found.
+- Manually record a clip when the camera is on and the system is unarmed.
 - Upload captured clips to the server and list them on the dashboard.
 - Favorite important clips so they are kept.
 - Automatically delete non-favorited clips after 30 days.

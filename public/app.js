@@ -71,9 +71,13 @@ function renderArmedState() {
   const armed = armedToggle.checked;
   armedLabel.textContent = armed ? "Armed" : "Unarmed";
   modeMetric.textContent = armed ? "Armed" : "Unarmed";
+  renderCameraState(Boolean(stream));
 
   if (armed && stream) {
     startMotionLoop();
+  } else if (armed) {
+    stopMotionLoop();
+    setStatus("Camera off");
   } else {
     stopMotionLoop();
     setStatus("Idle");
@@ -84,7 +88,7 @@ function renderCameraState(active) {
   cameraEmpty.hidden = active;
   cameraButton.disabled = false;
   cameraButton.textContent = active ? "Turn Camera Off" : "Start Camera";
-  manualRecordButton.disabled = !active || isRecording;
+  manualRecordButton.disabled = !active || armedToggle.checked || isRecording;
 }
 
 async function startCamera() {
@@ -177,6 +181,7 @@ function checkMotion() {
 
 async function recordClip(reason = "manual") {
   if (!stream || isRecording) return;
+  if (armedToggle.checked && reason !== "motion") return;
 
   const chunks = [];
   const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")
@@ -199,14 +204,14 @@ async function recordClip(reason = "manual") {
       uploadCount += 1;
       uploadMetric.textContent = String(uploadCount);
       await loadStatus();
-      setStatus(armedToggle.checked ? "Watching" : "Idle");
+      setStatus(armedToggle.checked && stream ? "Watching" : "Idle");
     } catch (error) {
       setStatus("Upload failed");
       console.error(error);
     } finally {
       isRecording = false;
       recordingBadge.hidden = true;
-      manualRecordButton.disabled = !stream;
+      renderCameraState(Boolean(stream));
       cooldownUntil = Date.now() + 4000;
     }
   });
@@ -283,12 +288,21 @@ cameraButton.addEventListener("click", async () => {
 
 manualRecordButton.addEventListener("click", () => recordClip("manual"));
 
-armedToggle.addEventListener("change", () => {
-  saveArmedState(armedToggle.checked).catch((error) => {
-    armedToggle.checked = !armedToggle.checked;
+armedToggle.addEventListener("change", async () => {
+  const shouldArm = armedToggle.checked;
+  try {
+    await saveArmedState(shouldArm);
+    if (shouldArm && !stream) {
+      await startCamera();
+    }
+  } catch (error) {
+    if (shouldArm) {
+      await saveArmedState(false).catch(console.error);
+    }
+    armedToggle.checked = !shouldArm;
     renderArmedState();
     console.error(error);
-  });
+  }
 });
 
 refreshButton.addEventListener("click", () => {
