@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Room Security Dashboard</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="camera-panel" aria-label="Live camera monitor">
+        <div class="topbar">
+          <div>
+            <p class="eyebrow">Room Security</p>
+            <h1>Dashboard</h1>
+          </div>
+          <label class="arm-switch">
+            <input id="armedToggle" type="checkbox">
+            <span class="track" aria-hidden="true"></span>
+            <span id="armedLabel">Unarmed</span>
+          </label>
+        </div>
+
+        <div class="video-frame">
+          <video id="cameraFeed" autoplay muted playsinline></video>
+          <div id="cameraEmpty" class="camera-empty">
+            <span>Camera offline</span>
+          </div>
+          <div id="recordingBadge" class="recording-badge" hidden>Recording</div>
+        </div>
+
+        <div class="controls">
+          <button id="cameraButton" class="primary-button" type="button">Start Camera</button>
+          <button id="manualRecordButton" type="button" disabled>Record Clip</button>
+          <label class="field">
+            <span>Sensitivity</span>
+            <input id="sensitivity" type="range" min="8" max="60" value="24">
+          </label>
+          <label class="field small">
+            <span>Clip seconds</span>
+            <input id="clipLength" type="number" min="3" max="30" value="8">
+          </label>
+        </div>
+
+        <canvas id="motionCanvas" width="320" height="180" hidden></canvas>
+      </section>
+
+      <aside class="side-panel" aria-label="Security events">
+        <div class="status-grid">
+          <div>
+            <span class="metric-label">Mode</span>
+            <strong id="modeMetric">Unarmed</strong>
+          </div>
+          <div>
+            <span class="metric-label">Motion</span>
+            <strong id="motionMetric">Idle</strong>
+          </div>
+          <div>
+            <span class="metric-label">Uploads</span>
+            <strong id="uploadMetric">0</strong>
+          </div>
+        </div>
+
+        <div class="events-header">
+          <h2>Captured Videos</h2>
+          <button id="refreshButton" type="button">Refresh</button>
+        </div>
+        <div id="capturesList" class="captures-list"></div>
+      </aside>
+    </main>
+
+    <template id="captureTemplate">
+      <article class="capture-card">
+        <video controls preload="metadata"></video>
+        <div>
+          <h3></h3>
+          <p></p>
+        </div>
+      </article>
+    </template>
+
+    <script src="app.js"></script>
+  </body>
+</html>

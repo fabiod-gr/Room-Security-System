@@ -1,0 +1,33 @@
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Editor and workspace files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Dependencies and build output
+node_modules/
+dist/
+build/
+
+# Python cache and virtual environments
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Logs and local environment
+*.log
+.env
+.env.*
+
+# Generated security captures
+data/
+captures/
+snapshots/
+recordings/
+*.webm
