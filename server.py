@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 
 
 ROOT = Path(__file__).resolve().parent
+PUBLIC_DIR = ROOT / "public"
 DATA_DIR = ROOT / "data"
 CAPTURE_DIR = DATA_DIR / "captures"
 MANIFEST_PATH = DATA_DIR / "captures.json"
@@ -61,6 +62,9 @@ def unique_capture_name(original_name):
 
 class SecurityHandler(SimpleHTTPRequestHandler):
     server_version = "RoomSecurityHTTP/1.0"
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, directory=PUBLIC_DIR, **kwargs)
 
     def end_headers(self):
         self.send_header("Cache-Control", "no-store")

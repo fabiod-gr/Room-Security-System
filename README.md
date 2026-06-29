@@ -2,6 +2,16 @@
 
 A small webcam security dashboard that runs locally in your browser and stores captured video clips on the Python server.
 
+## Project Layout
+
+```text
+.
+├── public/        # Browser dashboard files
+├── server.py      # Local web/API server
+├── README.md
+└── .gitignore
+```
+
 ## Features
 
 - Arm and unarm the room monitor from the dashboard.
