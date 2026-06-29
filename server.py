@@ -42,6 +42,15 @@ def write_json(path, payload):
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
+def list_captures():
+    captures = read_json(MANIFEST_PATH, [])
+    return [
+        capture
+        for capture in captures
+        if (CAPTURE_DIR / safe_filename(capture.get("filename", ""))).is_file()
+    ]
+
+
 def safe_filename(name):
     cleaned = re.sub(r"[^a-zA-Z0-9_.-]+", "-", name).strip(".-")
     return cleaned or "capture.webm"
@@ -90,7 +99,7 @@ class SecurityHandler(SimpleHTTPRequestHandler):
         if parsed.path == "/api/status":
             with state_lock:
                 state = read_json(STATE_PATH, {"armed": False})
-                captures = read_json(MANIFEST_PATH, [])
+                captures = list_captures()
             self.send_json({"armed": bool(state.get("armed")), "captures": captures})
             return
 

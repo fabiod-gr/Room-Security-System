@@ -81,18 +81,23 @@ function renderArmedState() {
 }
 
 async function startCamera() {
+  cameraButton.disabled = true;
+  cameraButton.textContent = "Starting...";
+  setStatus("Starting camera");
+
   stream = await navigator.mediaDevices.getUserMedia({
     video: {
       width: { ideal: 1280 },
       height: { ideal: 720 },
-      facingMode: "environment",
     },
     audio: true,
   });
+
   cameraFeed.srcObject = stream;
+  await cameraFeed.play();
+
   cameraEmpty.hidden = true;
   cameraButton.textContent = "Camera On";
-  cameraButton.disabled = true;
   manualRecordButton.disabled = false;
   renderArmedState();
 }
@@ -220,7 +225,7 @@ function renderCaptures(captures) {
 
     video.src = capture.url;
     title.textContent = capture.filename;
-    meta.textContent = `${formatDate(capture.createdAt)} · ${formatBytes(capture.size)}`;
+    meta.textContent = `${formatDate(capture.createdAt)} - ${formatBytes(capture.size)}`;
     capturesList.append(item);
   }
 }
@@ -229,6 +234,9 @@ cameraButton.addEventListener("click", async () => {
   try {
     await startCamera();
   } catch (error) {
+    cameraButton.disabled = false;
+    cameraButton.textContent = "Start Camera";
+    cameraEmpty.hidden = false;
     setStatus("Camera blocked");
     console.error(error);
   }
