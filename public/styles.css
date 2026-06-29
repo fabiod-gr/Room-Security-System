@@ -157,8 +157,9 @@ h1 {
 
 .video-frame {
   position: relative;
-  flex: 1;
-  min-height: 360px;
+  width: min(100%, 760px);
+  aspect-ratio: 16 / 9;
+  min-height: 0;
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -313,7 +314,7 @@ h1 {
   }
 
   .video-frame {
-    min-height: 260px;
+    width: 100%;
   }
 }
 

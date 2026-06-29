@@ -80,6 +80,13 @@ function renderArmedState() {
   }
 }
 
+function renderCameraState(active) {
+  cameraEmpty.hidden = active;
+  cameraButton.disabled = false;
+  cameraButton.textContent = active ? "Turn Camera Off" : "Start Camera";
+  manualRecordButton.disabled = !active || isRecording;
+}
+
 async function startCamera() {
   cameraButton.disabled = true;
   cameraButton.textContent = "Starting...";
@@ -96,10 +103,28 @@ async function startCamera() {
   cameraFeed.srcObject = stream;
   await cameraFeed.play();
 
-  cameraEmpty.hidden = true;
-  cameraButton.textContent = "Camera On";
-  manualRecordButton.disabled = false;
+  renderCameraState(true);
   renderArmedState();
+}
+
+function stopCamera() {
+  if (mediaRecorder && mediaRecorder.state === "recording") {
+    mediaRecorder.stop();
+  }
+
+  stopMotionLoop();
+
+  if (stream) {
+    stream.getTracks().forEach((track) => track.stop());
+  }
+
+  stream = null;
+  cameraFeed.pause();
+  cameraFeed.removeAttribute("src");
+  cameraFeed.srcObject = null;
+  previousFrame = null;
+  setStatus("Camera off");
+  renderCameraState(false);
 }
 
 function startMotionLoop() {
@@ -231,12 +256,15 @@ function renderCaptures(captures) {
 }
 
 cameraButton.addEventListener("click", async () => {
+  if (stream) {
+    stopCamera();
+    return;
+  }
+
   try {
     await startCamera();
   } catch (error) {
-    cameraButton.disabled = false;
-    cameraButton.textContent = "Start Camera";
-    cameraEmpty.hidden = false;
+    renderCameraState(false);
     setStatus("Camera blocked");
     console.error(error);
   }
