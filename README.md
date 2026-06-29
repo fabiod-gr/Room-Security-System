@@ -1,6 +1,6 @@
-# Room Security System
+# Fabio's Chopped Ass Room Security System
 
-A small webcam security dashboard that runs locally in your browser and stores captured video clips on the Python server.
+Y'know, it really pisses me off when people enter my room whenever I'm not home and move my shit around so I decided to vibecode this silly security system to help alleviate this problem
 
 ## Project Layout
 
@@ -40,7 +40,3 @@ Browser webcam access works on `localhost`. If you want to open the dashboard fr
 
 Uploaded clips and metadata are written under `data/`, which is ignored by Git.
 Non-favorited clips older than 30 days are deleted when the server starts, when the dashboard loads status, or after a new clip uploads. Favorited clips are skipped by that cleanup.
-
-## Notes
-
-This is a practical starter system, not a hardened security product. For real unattended use, add authentication, HTTPS, storage limits, and a way to run the server as a background service.
