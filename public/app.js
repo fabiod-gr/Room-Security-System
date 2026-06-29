@@ -194,9 +194,8 @@ async function recordClip(reason = "manual") {
 
   mediaRecorder.addEventListener("stop", async () => {
     const blob = new Blob(chunks, { type: "video/webm" });
-    const captureName = `${reason}-${new Date().toISOString().replace(/[:.]/g, "-")}.webm`;
     try {
-      await uploadCapture(blob, captureName);
+      await uploadCapture(blob);
       uploadCount += 1;
       uploadMetric.textContent = String(uploadCount);
       await loadStatus();
@@ -221,14 +220,21 @@ async function recordClip(reason = "manual") {
   }, clipLength * 1000);
 }
 
-async function uploadCapture(blob, name) {
+async function uploadCapture(blob) {
   return api("/api/captures", {
     method: "POST",
     headers: {
       "Content-Type": "video/webm",
-      "X-Capture-Name": name,
     },
     body: blob,
+  });
+}
+
+async function setCaptureFavorite(id, favorite) {
+  return api(`/api/captures/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ favorite }),
   });
 }
 
@@ -247,10 +253,15 @@ function renderCaptures(captures) {
     const video = item.querySelector("video");
     const title = item.querySelector("h3");
     const meta = item.querySelector("p");
+    const favoriteButton = item.querySelector(".favorite-button");
 
+    item.dataset.captureId = capture.id;
     video.src = capture.url;
     title.textContent = capture.filename;
     meta.textContent = `${formatDate(capture.createdAt)} - ${formatBytes(capture.size)}`;
+    favoriteButton.dataset.favorite = String(Boolean(capture.favorite));
+    favoriteButton.textContent = capture.favorite ? "Favorited" : "Favorite";
+    favoriteButton.setAttribute("aria-pressed", String(Boolean(capture.favorite)));
     capturesList.append(item);
   }
 }
@@ -282,6 +293,26 @@ armedToggle.addEventListener("change", () => {
 
 refreshButton.addEventListener("click", () => {
   loadStatus().catch(console.error);
+});
+
+capturesList.addEventListener("click", async (event) => {
+  const button = event.target.closest(".favorite-button");
+  if (!button) return;
+
+  const card = button.closest(".capture-card");
+  const favorite = button.dataset.favorite !== "true";
+
+  button.disabled = true;
+  try {
+    const capture = await setCaptureFavorite(card.dataset.captureId, favorite);
+    button.dataset.favorite = String(Boolean(capture.favorite));
+    button.textContent = capture.favorite ? "Favorited" : "Favorite";
+    button.setAttribute("aria-pressed", String(Boolean(capture.favorite)));
+  } catch (error) {
+    console.error(error);
+  } finally {
+    button.disabled = false;
+  }
 });
 
 loadStatus().catch(console.error);

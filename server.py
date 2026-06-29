@@ -5,7 +5,7 @@ import json
 import mimetypes
 import re
 import threading
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 
 ROOT = Path(__file__).resolve().parent
@@ -14,6 +14,7 @@ DATA_DIR = ROOT / "data"
 CAPTURE_DIR = DATA_DIR / "captures"
 MANIFEST_PATH = DATA_DIR / "captures.json"
 STATE_PATH = DATA_DIR / "state.json"
+RETENTION_DAYS = 30
 
 state_lock = threading.Lock()
 
@@ -42,13 +43,59 @@ def write_json(path, payload):
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
+def parse_utc_datetime(value):
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except (AttributeError, ValueError):
+        return datetime.now(timezone.utc)
+
+
+def capture_path(capture):
+    return CAPTURE_DIR / safe_filename(capture.get("filename", ""))
+
+
 def list_captures():
     captures = read_json(MANIFEST_PATH, [])
     return [
-        capture
+        {**capture, "favorite": bool(capture.get("favorite"))}
         for capture in captures
-        if (CAPTURE_DIR / safe_filename(capture.get("filename", ""))).is_file()
+        if capture_path(capture).is_file()
     ]
+
+
+def prune_old_captures():
+    cutoff = datetime.now(timezone.utc) - timedelta(days=RETENTION_DAYS)
+    kept = []
+    changed = False
+
+    for capture in read_json(MANIFEST_PATH, []):
+        target = capture_path(capture)
+        if not target.is_file():
+            changed = True
+            continue
+
+        created_at = parse_utc_datetime(capture.get("createdAt"))
+        if not capture.get("favorite") and created_at < cutoff:
+            target.unlink(missing_ok=True)
+            changed = True
+            continue
+
+        kept.append({**capture, "favorite": bool(capture.get("favorite"))})
+
+    if changed:
+        write_json(MANIFEST_PATH, kept)
+
+    return kept
+
+
+def update_capture_favorite(capture_id, favorite):
+    captures = prune_old_captures()
+    for capture in captures:
+        if capture.get("id") == capture_id:
+            capture["favorite"] = bool(favorite)
+            write_json(MANIFEST_PATH, captures)
+            return capture
+    return None
 
 
 def safe_filename(name):
@@ -56,15 +103,12 @@ def safe_filename(name):
     return cleaned or "capture.webm"
 
 
-def unique_capture_name(original_name):
-    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    original = safe_filename(original_name)
-    stem = Path(original).stem[:50] or "capture"
-    suffix = Path(original).suffix.lower() or ".webm"
-    candidate = f"{timestamp}-{stem}{suffix}"
+def unique_capture_name():
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    candidate = f"{timestamp}.webm"
     index = 2
     while (CAPTURE_DIR / candidate).exists():
-        candidate = f"{timestamp}-{stem}-{index}{suffix}"
+        candidate = f"{timestamp}-{index}.webm"
         index += 1
     return candidate
 
@@ -98,6 +142,7 @@ class SecurityHandler(SimpleHTTPRequestHandler):
         parsed = urlparse(self.path)
         if parsed.path == "/api/status":
             with state_lock:
+                prune_old_captures()
                 state = read_json(STATE_PATH, {"armed": False})
                 captures = list_captures()
             self.send_json({"armed": bool(state.get("armed")), "captures": captures})
@@ -143,8 +188,7 @@ class SecurityHandler(SimpleHTTPRequestHandler):
                 self.send_json({"error": "No video data received."}, status=400)
                 return
 
-            original_name = self.headers.get("X-Capture-Name", "motion.webm")
-            filename = unique_capture_name(original_name)
+            filename = unique_capture_name()
             target = CAPTURE_DIR / filename
 
             remaining = length
@@ -162,10 +206,11 @@ class SecurityHandler(SimpleHTTPRequestHandler):
                 "url": f"/captures/{filename}",
                 "createdAt": utc_now(),
                 "size": target.stat().st_size,
+                "favorite": False,
             }
 
             with state_lock:
-                captures = read_json(MANIFEST_PATH, [])
+                captures = prune_old_captures()
                 captures.insert(0, record)
                 write_json(MANIFEST_PATH, captures[:200])
 
@@ -174,9 +219,33 @@ class SecurityHandler(SimpleHTTPRequestHandler):
 
         self.send_error(404, "Not found")
 
+    def do_PATCH(self):
+        parsed = urlparse(self.path)
+        if parsed.path.startswith("/api/captures/"):
+            capture_id = unquote(parsed.path.removeprefix("/api/captures/"))
+            try:
+                payload = self.read_request_json()
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                self.send_json({"error": "Invalid JSON body."}, status=400)
+                return
+
+            with state_lock:
+                capture = update_capture_favorite(capture_id, payload.get("favorite"))
+
+            if not capture:
+                self.send_json({"error": "Capture not found."}, status=404)
+                return
+
+            self.send_json(capture)
+            return
+
+        self.send_error(404, "Not found")
+
 
 def main():
     ensure_storage()
+    with state_lock:
+        prune_old_captures()
     host = "0.0.0.0"
     port = 8000
     httpd = ThreadingHTTPServer((host, port), SecurityHandler)

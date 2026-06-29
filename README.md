@@ -19,6 +19,8 @@ A small webcam security dashboard that runs locally in your browser and stores c
 - Detect motion while armed and record short WebM video clips.
 - Manually record a clip at any time after the camera starts.
 - Upload captured clips to the server and list them on the dashboard.
+- Favorite important clips so they are kept.
+- Automatically delete non-favorited clips after 30 days.
 
 ## Run
 
@@ -37,6 +39,7 @@ Browser webcam access works on `localhost`. If you want to open the dashboard fr
 ## Stored Data
 
 Uploaded clips and metadata are written under `data/`, which is ignored by Git.
+Non-favorited clips older than 30 days are deleted when the server starts, when the dashboard loads status, or after a new clip uploads. Favorited clips are skipped by that cleanup.
 
 ## Notes
 
