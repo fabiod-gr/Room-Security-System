@@ -155,35 +155,50 @@ h1 {
   background: var(--danger);
 }
 
-.video-frame {
+.sensor-panel {
   position: relative;
   width: min(100%, 760px);
   aspect-ratio: 16 / 9;
   min-height: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 18px;
+  align-items: center;
+  padding: 28px;
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #050607;
+  background: #121619;
 }
 
-.video-frame video,
-.camera-empty {
-  width: 100%;
-  height: 100%;
+.sensor-panel h2 {
+  margin: 0 0 8px;
+  font-size: clamp(1.4rem, 3vw, 2.3rem);
 }
 
-.video-frame video {
-  display: block;
-  object-fit: cover;
-}
-
-.camera-empty {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
+.sensor-panel p {
+  max-width: 540px;
   color: var(--muted);
-  background: repeating-linear-gradient(135deg, #0b0d0e, #0b0d0e 12px, #111517 12px, #111517 24px);
+  line-height: 1.5;
+}
+
+.system-light {
+  width: 58px;
+  height: 58px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: #3a4247;
+  box-shadow: inset 0 0 0 10px rgba(255, 255, 255, 0.04);
+}
+
+.system-light[data-state="armed"] {
+  background: var(--accent);
+  box-shadow: 0 0 28px rgba(46, 211, 163, 0.28);
+}
+
+.system-light[data-state="recording"] {
+  background: var(--danger);
+  box-shadow: 0 0 28px rgba(255, 92, 92, 0.32);
 }
 
 .recording-badge {
@@ -355,7 +370,7 @@ h1 {
     grid-template-columns: 1fr;
   }
 
-  .video-frame {
+  .sensor-panel {
     width: 100%;
   }
 }
@@ -386,6 +401,16 @@ h1 {
   .status-grid,
   .capture-card {
     grid-template-columns: 1fr;
+  }
+
+  .sensor-panel {
+    grid-template-columns: 1fr;
+    aspect-ratio: auto;
+    min-height: 220px;
+  }
+
+  .capture-actions {
+    justify-content: space-between;
   }
 
   .capture-card video {

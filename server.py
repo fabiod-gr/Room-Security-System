@@ -3,8 +3,11 @@ from pathlib import Path
 from urllib.parse import unquote, urlparse
 import json
 import mimetypes
+import os
 import re
+import subprocess
 import threading
+import time
 from datetime import datetime, timedelta, timezone
 
 
@@ -15,8 +18,25 @@ CAPTURE_DIR = DATA_DIR / "captures"
 MANIFEST_PATH = DATA_DIR / "captures.json"
 STATE_PATH = DATA_DIR / "state.json"
 RETENTION_DAYS = 30
+PIR_GPIO_PIN = int(os.environ.get("SECURITY_PIR_GPIO", "17"))
+CAPTURE_SECONDS = int(os.environ.get("SECURITY_CAPTURE_SECONDS", "15"))
+RECORD_COOLDOWN_SECONDS = int(os.environ.get("SECURITY_RECORD_COOLDOWN_SECONDS", "10"))
+VIDEO_DEVICE = os.environ.get("SECURITY_VIDEO_DEVICE", "/dev/video0")
+AUDIO_DEVICE = os.environ.get("SECURITY_AUDIO_DEVICE", "default")
+VIDEO_SIZE = os.environ.get("SECURITY_VIDEO_SIZE", "640x480")
+FRAMERATE = os.environ.get("SECURITY_FRAMERATE", "15")
 
 state_lock = threading.Lock()
+recording_lock = threading.Lock()
+recording_active = False
+last_recording_started_at = 0
+last_motion_at = None
+motion_sensor = None
+motion_sensor_status = {
+    "enabled": False,
+    "pin": PIR_GPIO_PIN,
+    "error": None,
+}
 
 
 def utc_now():
@@ -121,14 +141,145 @@ def safe_filename(name):
     return cleaned or "capture.webm"
 
 
-def unique_capture_name():
+def unique_capture_name(extension=".webm"):
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    candidate = f"{timestamp}.webm"
+    extension = extension if extension.startswith(".") else f".{extension}"
+    candidate = f"{timestamp}{extension}"
     index = 2
     while (CAPTURE_DIR / candidate).exists():
-        candidate = f"{timestamp}-{index}.webm"
+        candidate = f"{timestamp}-{index}{extension}"
         index += 1
     return candidate
+
+
+def is_armed():
+    return bool(read_json(STATE_PATH, {"armed": False}).get("armed"))
+
+
+def add_capture_record(filename, trigger):
+    target = CAPTURE_DIR / filename
+    record = {
+        "id": Path(filename).stem,
+        "filename": filename,
+        "url": f"/captures/{filename}",
+        "createdAt": utc_now(),
+        "size": target.stat().st_size,
+        "favorite": False,
+        "trigger": trigger,
+    }
+
+    captures = prune_old_captures()
+    captures.insert(0, record)
+    write_json(MANIFEST_PATH, captures[:200])
+    return record
+
+
+def build_recording_command(target):
+    return [
+        "ffmpeg",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-y",
+        "-f",
+        "v4l2",
+        "-framerate",
+        FRAMERATE,
+        "-video_size",
+        VIDEO_SIZE,
+        "-i",
+        VIDEO_DEVICE,
+        "-f",
+        "alsa",
+        "-i",
+        AUDIO_DEVICE,
+        "-t",
+        str(CAPTURE_SECONDS),
+        "-c:v",
+        "libx264",
+        "-preset",
+        "veryfast",
+        "-pix_fmt",
+        "yuv420p",
+        "-c:a",
+        "aac",
+        "-movflags",
+        "+faststart",
+        str(target),
+    ]
+
+
+def record_from_pi_camera(trigger="motion"):
+    global recording_active, last_recording_started_at
+
+    with recording_lock:
+        now = time.monotonic()
+        if recording_active or now - last_recording_started_at < RECORD_COOLDOWN_SECONDS:
+            return False
+        if trigger == "motion" and not is_armed():
+            return False
+        recording_active = True
+        last_recording_started_at = now
+
+    def worker():
+        global recording_active
+
+        filename = unique_capture_name(".mp4")
+        target = CAPTURE_DIR / filename
+
+        try:
+            result = subprocess.run(
+                build_recording_command(target),
+                capture_output=True,
+                text=True,
+                timeout=CAPTURE_SECONDS + 15,
+            )
+            if result.returncode != 0:
+                target.unlink(missing_ok=True)
+                print(f"Recording failed: {result.stderr.strip()}")
+                return
+            if not target.exists() or target.stat().st_size == 0:
+                target.unlink(missing_ok=True)
+                print("Recording failed: no video file was created.")
+                return
+
+            with state_lock:
+                add_capture_record(filename, trigger)
+        except FileNotFoundError:
+            target.unlink(missing_ok=True)
+            print("Recording failed: ffmpeg is not installed or is not on PATH.")
+        except subprocess.TimeoutExpired:
+            target.unlink(missing_ok=True)
+            print("Recording failed: ffmpeg timed out.")
+        finally:
+            with recording_lock:
+                recording_active = False
+
+    threading.Thread(target=worker, daemon=True).start()
+    return True
+
+
+def handle_motion_detected():
+    global last_motion_at
+
+    last_motion_at = utc_now()
+    if is_armed():
+        record_from_pi_camera("motion")
+
+
+def setup_motion_sensor():
+    global motion_sensor
+
+    try:
+        from gpiozero import MotionSensor
+
+        motion_sensor = MotionSensor(PIR_GPIO_PIN)
+        motion_sensor.when_motion = handle_motion_detected
+        motion_sensor_status.update({"enabled": True, "error": None})
+        print(f"HC-SR501 motion sensor listening on GPIO{PIR_GPIO_PIN}.")
+    except Exception as error:
+        motion_sensor_status.update({"enabled": False, "error": str(error)})
+        print(f"Motion sensor disabled: {error}")
 
 
 class SecurityHandler(SimpleHTTPRequestHandler):
@@ -163,7 +314,18 @@ class SecurityHandler(SimpleHTTPRequestHandler):
                 prune_old_captures()
                 state = read_json(STATE_PATH, {"armed": False})
                 captures = list_captures()
-            self.send_json({"armed": bool(state.get("armed")), "captures": captures})
+            with recording_lock:
+                is_recording = recording_active
+            self.send_json(
+                {
+                    "armed": bool(state.get("armed")),
+                    "captures": captures,
+                    "recording": is_recording,
+                    "lastMotionAt": last_motion_at,
+                    "sensor": motion_sensor_status,
+                    "captureSeconds": CAPTURE_SECONDS,
+                }
+            )
             return
 
         if parsed.path.startswith("/captures/"):
@@ -206,7 +368,7 @@ class SecurityHandler(SimpleHTTPRequestHandler):
                 self.send_json({"error": "No video data received."}, status=400)
                 return
 
-            filename = unique_capture_name()
+            filename = unique_capture_name(".webm")
             target = CAPTURE_DIR / filename
 
             remaining = length
@@ -218,19 +380,8 @@ class SecurityHandler(SimpleHTTPRequestHandler):
                     file.write(chunk)
                     remaining -= len(chunk)
 
-            record = {
-                "id": Path(filename).stem,
-                "filename": filename,
-                "url": f"/captures/{filename}",
-                "createdAt": utc_now(),
-                "size": target.stat().st_size,
-                "favorite": False,
-            }
-
             with state_lock:
-                captures = prune_old_captures()
-                captures.insert(0, record)
-                write_json(MANIFEST_PATH, captures[:200])
+                record = add_capture_record(filename, "dashboard-upload")
 
             self.send_json(record, status=201)
             return
@@ -281,6 +432,7 @@ def main():
     ensure_storage()
     with state_lock:
         prune_old_captures()
+    setup_motion_sensor()
     host = "0.0.0.0"
     port = 8000
     httpd = ThreadingHTTPServer((host, port), SecurityHandler)

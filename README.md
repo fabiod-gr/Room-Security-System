@@ -15,13 +15,55 @@ Y'know, it really pisses me off when people enter my room whenever I'm not home 
 ## Features
 
 - Arm and unarm the room monitor from the dashboard.
-- Start a webcam feed directly in the browser.
-- Detect motion while armed and record short WebM video clips only when motion is found.
-- Manually record a clip when the camera is on and the system is unarmed.
+- Use an HC-SR501 PIR motion sensor on the Raspberry Pi as the recording trigger.
+- Record from a USB webcam only when motion is detected while armed.
+- Include audio from the webcam microphone in recorded clips.
 - Upload captured clips to the server and list them on the dashboard.
 - Favorite important clips so they are kept.
 - Delete unwanted clips from the dashboard.
 - Automatically delete non-favorited clips after 30 days.
+
+## Raspberry Pi Setup
+
+Wire the HC-SR501 to the Raspberry Pi 3 B+:
+
+```text
+HC-SR501 GND  -> Pi GND
+HC-SR501 OUT  -> Pi physical pin 11 / BCM GPIO17
+HC-SR501 VCC  -> Pi 5V
+```
+
+Install the Pi dependencies:
+
+```bash
+sudo apt update
+sudo apt install -y ffmpeg python3-gpiozero
+```
+
+The server records from:
+
+```text
+Video: /dev/video0
+Audio: default ALSA microphone
+```
+
+If your webcam or microphone uses a different device, set environment variables before starting the server:
+
+```bash
+export SECURITY_VIDEO_DEVICE=/dev/video0
+export SECURITY_AUDIO_DEVICE=default
+export SECURITY_PIR_GPIO=17
+export SECURITY_CAPTURE_SECONDS=15
+export SECURITY_VIDEO_SIZE=640x480
+export SECURITY_FRAMERATE=15
+python3 server.py
+```
+
+To find audio devices:
+
+```bash
+arecord -l
+```
 
 ## Run
 
@@ -35,7 +77,7 @@ Open:
 http://localhost:8000
 ```
 
-Browser webcam access works on `localhost`. If you want to open the dashboard from another device, use HTTPS or a trusted tunnel because most browsers block camera access on plain HTTP remote addresses.
+Run this on the Raspberry Pi that has the HC-SR501 and USB webcam connected. The dashboard can be opened from another device on your network, but recording is controlled by the Pi server, not by the browser.
 
 ## Stored Data
 

@@ -1,32 +1,17 @@
-const cameraFeed = document.querySelector("#cameraFeed");
-const cameraEmpty = document.querySelector("#cameraEmpty");
-const cameraButton = document.querySelector("#cameraButton");
-const manualRecordButton = document.querySelector("#manualRecordButton");
 const armedToggle = document.querySelector("#armedToggle");
 const armedLabel = document.querySelector("#armedLabel");
 const modeMetric = document.querySelector("#modeMetric");
 const motionMetric = document.querySelector("#motionMetric");
-const uploadMetric = document.querySelector("#uploadMetric");
+const recordingMetric = document.querySelector("#recordingMetric");
 const recordingBadge = document.querySelector("#recordingBadge");
 const refreshButton = document.querySelector("#refreshButton");
 const capturesList = document.querySelector("#capturesList");
 const captureTemplate = document.querySelector("#captureTemplate");
-const sensitivityInput = document.querySelector("#sensitivity");
-const clipLengthInput = document.querySelector("#clipLength");
-const motionCanvas = document.querySelector("#motionCanvas");
-const motionContext = motionCanvas.getContext("2d", { willReadFrequently: true });
+const systemLight = document.querySelector("#systemLight");
+const systemSummary = document.querySelector("#systemSummary");
+const systemDetail = document.querySelector("#systemDetail");
 
-let stream = null;
-let previousFrame = null;
-let motionTimer = null;
-let mediaRecorder = null;
-let isRecording = false;
-let cooldownUntil = 0;
-let uploadCount = 0;
-
-function setStatus(message) {
-  motionMetric.textContent = message;
-}
+let refreshTimer = null;
 
 function formatBytes(bytes) {
   if (bytes < 1024) return `${bytes} B`;
@@ -35,6 +20,7 @@ function formatBytes(bytes) {
 }
 
 function formatDate(value) {
+  if (!value) return "Never";
   return new Intl.DateTimeFormat(undefined, {
     dateStyle: "medium",
     timeStyle: "short",
@@ -52,187 +38,52 @@ async function api(path, options = {}) {
 
 async function loadStatus() {
   const data = await api("/api/status");
-  armedToggle.checked = data.armed;
-  renderArmedState();
+  renderStatus(data);
   renderCaptures(data.captures);
 }
 
 async function saveArmedState(armed) {
-  const data = await api("/api/status", {
+  return api("/api/status", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ armed }),
   });
-  armedToggle.checked = data.armed;
-  renderArmedState();
 }
 
-function renderArmedState() {
-  const armed = armedToggle.checked;
+function renderStatus(data) {
+  const sensorReady = Boolean(data.sensor?.enabled);
+  const armed = Boolean(data.armed);
+  const recording = Boolean(data.recording);
+
+  armedToggle.checked = armed;
   armedLabel.textContent = armed ? "Armed" : "Unarmed";
   modeMetric.textContent = armed ? "Armed" : "Unarmed";
-  renderCameraState(Boolean(stream));
+  motionMetric.textContent = data.lastMotionAt ? formatDate(data.lastMotionAt) : "No motion";
+  recordingMetric.textContent = recording ? "Recording" : "Idle";
+  recordingBadge.hidden = !recording;
 
-  if (armed && stream) {
-    startMotionLoop();
-  } else if (armed) {
-    stopMotionLoop();
-    setStatus("Camera off");
-  } else {
-    stopMotionLoop();
-    setStatus("Idle");
-  }
-}
+  systemLight.dataset.state = recording ? "recording" : armed && sensorReady ? "armed" : "idle";
 
-function renderCameraState(active) {
-  cameraEmpty.hidden = active;
-  cameraButton.disabled = false;
-  cameraButton.textContent = active ? "Turn Camera Off" : "Start Camera";
-  manualRecordButton.disabled = !active || armedToggle.checked || isRecording;
-}
-
-async function startCamera() {
-  cameraButton.disabled = true;
-  cameraButton.textContent = "Starting...";
-  setStatus("Starting camera");
-
-  stream = await navigator.mediaDevices.getUserMedia({
-    video: {
-      width: { ideal: 1280 },
-      height: { ideal: 720 },
-    },
-    audio: true,
-  });
-
-  cameraFeed.srcObject = stream;
-  await cameraFeed.play();
-
-  renderCameraState(true);
-  renderArmedState();
-}
-
-function stopCamera() {
-  if (mediaRecorder && mediaRecorder.state === "recording") {
-    mediaRecorder.stop();
-  }
-
-  stopMotionLoop();
-
-  if (stream) {
-    stream.getTracks().forEach((track) => track.stop());
-  }
-
-  stream = null;
-  cameraFeed.pause();
-  cameraFeed.removeAttribute("src");
-  cameraFeed.srcObject = null;
-  previousFrame = null;
-  setStatus("Camera off");
-  renderCameraState(false);
-}
-
-function startMotionLoop() {
-  if (motionTimer) return;
-  previousFrame = null;
-  setStatus("Watching");
-  motionTimer = window.setInterval(checkMotion, 500);
-}
-
-function stopMotionLoop() {
-  if (!motionTimer) return;
-  window.clearInterval(motionTimer);
-  motionTimer = null;
-  previousFrame = null;
-}
-
-function checkMotion() {
-  if (!stream || !armedToggle.checked || isRecording || Date.now() < cooldownUntil) return;
-  if (cameraFeed.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return;
-
-  motionContext.drawImage(cameraFeed, 0, 0, motionCanvas.width, motionCanvas.height);
-  const current = motionContext.getImageData(0, 0, motionCanvas.width, motionCanvas.height);
-
-  if (!previousFrame) {
-    previousFrame = current;
+  if (!sensorReady) {
+    systemSummary.textContent = "Motion sensor unavailable";
+    systemDetail.textContent = data.sensor?.error || "Install gpiozero on the Raspberry Pi and run the server there.";
     return;
   }
 
-  let changed = 0;
-  let sampled = 0;
-  const threshold = Number(sensitivityInput.value);
-
-  for (let index = 0; index < current.data.length; index += 16) {
-    const diff =
-      Math.abs(current.data[index] - previousFrame.data[index]) +
-      Math.abs(current.data[index + 1] - previousFrame.data[index + 1]) +
-      Math.abs(current.data[index + 2] - previousFrame.data[index + 2]);
-    if (diff > threshold) changed += 1;
-    sampled += 1;
+  if (recording) {
+    systemSummary.textContent = "Recording motion event";
+    systemDetail.textContent = `The Pi webcam and microphone are recording a ${data.captureSeconds}-second clip.`;
+    return;
   }
 
-  previousFrame = current;
-  const motionPercent = (changed / sampled) * 100;
-  setStatus(`${motionPercent.toFixed(1)}%`);
-
-  if (motionPercent > 3) {
-    recordClip("motion");
+  if (armed) {
+    systemSummary.textContent = "Watching for motion";
+    systemDetail.textContent = "The webcam is off until the HC-SR501 detects motion.";
+    return;
   }
-}
 
-async function recordClip(reason = "manual") {
-  if (!stream || isRecording) return;
-  if (armedToggle.checked && reason !== "motion") return;
-
-  const chunks = [];
-  const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")
-    ? "video/webm;codecs=vp9,opus"
-    : "video/webm";
-  mediaRecorder = new MediaRecorder(stream, { mimeType });
-  isRecording = true;
-  recordingBadge.hidden = false;
-  manualRecordButton.disabled = true;
-  setStatus("Recording");
-
-  mediaRecorder.addEventListener("dataavailable", (event) => {
-    if (event.data.size > 0) chunks.push(event.data);
-  });
-
-  mediaRecorder.addEventListener("stop", async () => {
-    const blob = new Blob(chunks, { type: "video/webm" });
-    try {
-      await uploadCapture(blob);
-      uploadCount += 1;
-      uploadMetric.textContent = String(uploadCount);
-      await loadStatus();
-      setStatus(armedToggle.checked && stream ? "Watching" : "Idle");
-    } catch (error) {
-      setStatus("Upload failed");
-      console.error(error);
-    } finally {
-      isRecording = false;
-      recordingBadge.hidden = true;
-      renderCameraState(Boolean(stream));
-      cooldownUntil = Date.now() + 4000;
-    }
-  });
-
-  mediaRecorder.start();
-  const clipLength = Math.min(30, Math.max(3, Number(clipLengthInput.value) || 8));
-  window.setTimeout(() => {
-    if (mediaRecorder && mediaRecorder.state === "recording") {
-      mediaRecorder.stop();
-    }
-  }, clipLength * 1000);
-}
-
-async function uploadCapture(blob) {
-  return api("/api/captures", {
-    method: "POST",
-    headers: {
-      "Content-Type": "video/webm",
-    },
-    body: blob,
-  });
+  systemSummary.textContent = "System unarmed";
+  systemDetail.textContent = "Motion can be detected, but clips are only recorded while armed.";
 }
 
 async function setCaptureFavorite(id, favorite) {
@@ -277,37 +128,17 @@ function renderCaptures(captures) {
   }
 }
 
-cameraButton.addEventListener("click", async () => {
-  if (stream) {
-    stopCamera();
-    return;
-  }
-
-  try {
-    await startCamera();
-  } catch (error) {
-    renderCameraState(false);
-    setStatus("Camera blocked");
-    console.error(error);
-  }
-});
-
-manualRecordButton.addEventListener("click", () => recordClip("manual"));
-
 armedToggle.addEventListener("change", async () => {
   const shouldArm = armedToggle.checked;
+  armedToggle.disabled = true;
   try {
     await saveArmedState(shouldArm);
-    if (shouldArm && !stream) {
-      await startCamera();
-    }
+    await loadStatus();
   } catch (error) {
-    if (shouldArm) {
-      await saveArmedState(false).catch(console.error);
-    }
     armedToggle.checked = !shouldArm;
-    renderArmedState();
     console.error(error);
+  } finally {
+    armedToggle.disabled = false;
   }
 });
 
@@ -354,3 +185,10 @@ capturesList.addEventListener("click", async (event) => {
 });
 
 loadStatus().catch(console.error);
+refreshTimer = window.setInterval(() => {
+  loadStatus().catch(console.error);
+}, 5000);
+
+window.addEventListener("beforeunload", () => {
+  window.clearInterval(refreshTimer);
+});

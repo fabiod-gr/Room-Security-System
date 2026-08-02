@@ -22,28 +22,14 @@
           </label>
         </div>
 
-        <div class="video-frame">
-          <video id="cameraFeed" autoplay muted playsinline></video>
-          <div id="cameraEmpty" class="camera-empty">
-            <span>Camera offline</span>
+        <div class="sensor-panel">
+          <div id="systemLight" class="system-light" aria-hidden="true"></div>
+          <div>
+            <h2 id="systemSummary">Sensor idle</h2>
+            <p id="systemDetail">Arm the system to record from the Pi webcam when the HC-SR501 detects motion.</p>
           </div>
           <div id="recordingBadge" class="recording-badge" hidden>Recording</div>
         </div>
-
-        <div class="controls">
-          <button id="cameraButton" class="primary-button" type="button">Start Camera</button>
-          <button id="manualRecordButton" type="button" disabled>Record Clip</button>
-          <label class="field">
-            <span>Sensitivity</span>
-            <input id="sensitivity" type="range" min="8" max="60" value="24">
-          </label>
-          <label class="field small">
-            <span>Clip seconds</span>
-            <input id="clipLength" type="number" min="3" max="30" value="8">
-          </label>
-        </div>
-
-        <canvas id="motionCanvas" width="320" height="180" hidden></canvas>
       </section>
 
       <aside class="side-panel" aria-label="Security events">
@@ -57,8 +43,8 @@
             <strong id="motionMetric">Idle</strong>
           </div>
           <div>
-            <span class="metric-label">Uploads</span>
-            <strong id="uploadMetric">0</strong>
+            <span class="metric-label">Recording</span>
+            <strong id="recordingMetric">Idle</strong>
           </div>
         </div>
 
