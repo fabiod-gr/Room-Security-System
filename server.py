@@ -47,6 +47,7 @@ AUDIO_DEVICE = os.environ.get("SECURITY_AUDIO_DEVICE", "default")
 INPUT_FORMAT = os.environ.get("SECURITY_INPUT_FORMAT", "").strip()
 VIDEO_SIZE = os.environ.get("SECURITY_VIDEO_SIZE", "640x480")
 FRAMERATE = os.environ.get("SECURITY_FRAMERATE", "15")
+audio_enabled = AUDIO_DEVICE.lower() not in {"", "none", "off", "false", "0"}
 
 state_lock = threading.Lock()
 recording_lock = threading.Lock()
@@ -89,7 +90,10 @@ def write_json(path, payload):
 
 def parse_utc_datetime(value):
     try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            return parsed.replace(tzinfo=timezone.utc)
+        return parsed
     except (AttributeError, ValueError):
         return datetime.now(timezone.utc)
 
@@ -221,22 +225,44 @@ def build_recording_command(target):
         VIDEO_SIZE,
         "-i",
         VIDEO_DEVICE,
+        ]
+    )
+
+    if audio_enabled:
+        command.extend(
+            [
         "-thread_queue_size",
         "512",
         "-f",
         "alsa",
         "-i",
         AUDIO_DEVICE,
+            ]
+        )
+
+    command.extend(
+        [
         "-t",
         str(CAPTURE_SECONDS),
         "-c:v",
         "libx264",
         "-preset",
-        "veryfast",
+        "ultrafast",
         "-pix_fmt",
         "yuv420p",
+        ]
+    )
+
+    if audio_enabled:
+        command.extend(
+            [
         "-c:a",
         "aac",
+            ]
+        )
+
+    command.extend(
+        [
         "-movflags",
         "+faststart",
         str(target),
@@ -266,7 +292,7 @@ def record_from_pi_camera(trigger="motion"):
         now = time.monotonic()
         if recording_active or now - last_recording_started_at < RECORD_COOLDOWN_SECONDS:
             return False
-        if trigger == "motion" and not is_armed():
+        if trigger != "test" and not is_armed():
             return False
         recording_active = True
         last_recording_started_at = now
@@ -383,6 +409,7 @@ class SecurityHandler(SimpleHTTPRequestHandler):
                     "captureSeconds": CAPTURE_SECONDS,
                     "videoDevice": VIDEO_DEVICE,
                     "audioDevice": AUDIO_DEVICE,
+                    "audioEnabled": audio_enabled,
                     "inputFormat": INPUT_FORMAT,
                 }
             )
@@ -444,6 +471,12 @@ class SecurityHandler(SimpleHTTPRequestHandler):
                 record = add_capture_record(filename, "dashboard-upload")
 
             self.send_json(record, status=201)
+            return
+
+        if parsed.path == "/api/test-recording":
+            started = record_from_pi_camera("test")
+            status = 202 if started else 409
+            self.send_json({"recording": started}, status=status)
             return
 
         self.send_error(404, "Not found")

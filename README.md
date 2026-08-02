@@ -60,7 +60,7 @@ SECURITY_CAPTURE_SECONDS=15
 SECURITY_VIDEO_SIZE=640x480
 SECURITY_FRAMERATE=15
 SECURITY_RECORD_COOLDOWN_SECONDS=10
-SECURITY_INPUT_FORMAT=
+SECURITY_INPUT_FORMAT=mjpeg
 ```
 
 To find audio devices:
@@ -68,6 +68,14 @@ To find audio devices:
 ```bash
 arecord -l
 ```
+
+If recording fails and you need to isolate whether the webcam microphone is the problem, temporarily set:
+
+```env
+SECURITY_AUDIO_DEVICE=none
+```
+
+That records video only. Set it back to your webcam microphone device once audio is working.
 
 ## Run
 

@@ -10,6 +10,7 @@ const captureTemplate = document.querySelector("#captureTemplate");
 const systemLight = document.querySelector("#systemLight");
 const systemSummary = document.querySelector("#systemSummary");
 const systemDetail = document.querySelector("#systemDetail");
+const testRecordingButton = document.querySelector("#testRecordingButton");
 
 let refreshTimer = null;
 
@@ -50,6 +51,12 @@ async function saveArmedState(armed) {
   });
 }
 
+async function startTestRecording() {
+  return api("/api/test-recording", {
+    method: "POST",
+  });
+}
+
 function renderStatus(data) {
   const sensorReady = Boolean(data.sensor?.enabled);
   const armed = Boolean(data.armed);
@@ -61,6 +68,7 @@ function renderStatus(data) {
   motionMetric.textContent = data.lastMotionAt ? formatDate(data.lastMotionAt) : "No motion";
   recordingMetric.textContent = recording ? "Recording" : "Idle";
   recordingBadge.hidden = !recording;
+  testRecordingButton.disabled = recording;
 
   systemLight.dataset.state = recording ? "recording" : armed && sensorReady ? "armed" : "idle";
 
@@ -150,6 +158,20 @@ armedToggle.addEventListener("change", async () => {
 
 refreshButton.addEventListener("click", () => {
   loadStatus().catch(console.error);
+});
+
+testRecordingButton.addEventListener("click", async () => {
+  testRecordingButton.disabled = true;
+  try {
+    await startTestRecording();
+    await loadStatus();
+  } catch (error) {
+    console.error(error);
+  } finally {
+    window.setTimeout(() => {
+      loadStatus().catch(console.error);
+    }, 1000);
+  }
 });
 
 capturesList.addEventListener("click", async (event) => {
