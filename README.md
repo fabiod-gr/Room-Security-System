@@ -21,7 +21,7 @@ Y'know, it really pisses me off when people enter my room whenever I'm not home 
 - Upload captured clips to the server and list them on the dashboard.
 - Favorite important clips so they are kept.
 - Delete unwanted clips from the dashboard.
-- Automatically delete non-favorited clips after 30 days.
+- Automatically delete non-favorited clips after 15 days.
 
 ## Raspberry Pi Setup
 
@@ -82,4 +82,4 @@ Run this on the Raspberry Pi that has the HC-SR501 and USB webcam connected. The
 ## Stored Data
 
 Uploaded clips and metadata are written under `data/`, which is ignored by Git.
-Non-favorited clips older than 30 days are deleted when the server starts, when the dashboard loads status, or after a new clip uploads. Favorited clips are skipped by that cleanup.
+Non-favorited clips older than 15 days are deleted when the server starts, when the dashboard loads status, or after a new clip uploads. Favorited clips are skipped by that cleanup.
