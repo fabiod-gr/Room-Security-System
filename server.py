@@ -17,12 +17,34 @@ DATA_DIR = ROOT / "data"
 CAPTURE_DIR = DATA_DIR / "captures"
 MANIFEST_PATH = DATA_DIR / "captures.json"
 STATE_PATH = DATA_DIR / "state.json"
+
+
+def load_env_file(path):
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except FileNotFoundError:
+        return
+
+    for line in lines:
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+        key, value = stripped.split("=", 1)
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+
+load_env_file(ROOT / ".env")
+
 RETENTION_DAYS = 15
 PIR_GPIO_PIN = int(os.environ.get("SECURITY_PIR_GPIO", "17"))
 CAPTURE_SECONDS = int(os.environ.get("SECURITY_CAPTURE_SECONDS", "15"))
 RECORD_COOLDOWN_SECONDS = int(os.environ.get("SECURITY_RECORD_COOLDOWN_SECONDS", "10"))
 VIDEO_DEVICE = os.environ.get("SECURITY_VIDEO_DEVICE", "/dev/video0")
 AUDIO_DEVICE = os.environ.get("SECURITY_AUDIO_DEVICE", "default")
+INPUT_FORMAT = os.environ.get("SECURITY_INPUT_FORMAT", "").strip()
 VIDEO_SIZE = os.environ.get("SECURITY_VIDEO_SIZE", "640x480")
 FRAMERATE = os.environ.get("SECURITY_FRAMERATE", "15")
 
@@ -30,6 +52,8 @@ state_lock = threading.Lock()
 recording_lock = threading.Lock()
 recording_active = False
 last_recording_started_at = 0
+last_recording_error = None
+last_recording_finished_at = None
 last_motion_at = None
 motion_sensor = None
 motion_sensor_status = {
@@ -175,20 +199,30 @@ def add_capture_record(filename, trigger):
 
 
 def build_recording_command(target):
-    return [
+    command = [
         "ffmpeg",
         "-hide_banner",
         "-loglevel",
         "error",
         "-y",
+        "-thread_queue_size",
+        "512",
         "-f",
         "v4l2",
+    ]
+    if INPUT_FORMAT:
+        command.extend(["-input_format", INPUT_FORMAT])
+
+    command.extend(
+        [
         "-framerate",
         FRAMERATE,
         "-video_size",
         VIDEO_SIZE,
         "-i",
         VIDEO_DEVICE,
+        "-thread_queue_size",
+        "512",
         "-f",
         "alsa",
         "-i",
@@ -206,7 +240,23 @@ def build_recording_command(target):
         "-movflags",
         "+faststart",
         str(target),
-    ]
+        ]
+    )
+    return command
+
+
+def set_recording_error(message):
+    global last_recording_error, last_recording_finished_at
+
+    last_recording_error = message
+    last_recording_finished_at = utc_now()
+    print(message)
+
+
+def clear_recording_error():
+    global last_recording_error
+
+    last_recording_error = None
 
 
 def record_from_pi_camera(trigger="motion"):
@@ -220,9 +270,10 @@ def record_from_pi_camera(trigger="motion"):
             return False
         recording_active = True
         last_recording_started_at = now
+        clear_recording_error()
 
     def worker():
-        global recording_active
+        global recording_active, last_recording_finished_at
 
         filename = unique_capture_name(".mp4")
         target = CAPTURE_DIR / filename
@@ -236,21 +287,23 @@ def record_from_pi_camera(trigger="motion"):
             )
             if result.returncode != 0:
                 target.unlink(missing_ok=True)
-                print(f"Recording failed: {result.stderr.strip()}")
+                error = result.stderr.strip() or "ffmpeg exited without an error message."
+                set_recording_error(f"Recording failed: {error}")
                 return
             if not target.exists() or target.stat().st_size == 0:
                 target.unlink(missing_ok=True)
-                print("Recording failed: no video file was created.")
+                set_recording_error("Recording failed: no video file was created.")
                 return
 
             with state_lock:
                 add_capture_record(filename, trigger)
+            last_recording_finished_at = utc_now()
         except FileNotFoundError:
             target.unlink(missing_ok=True)
-            print("Recording failed: ffmpeg is not installed or is not on PATH.")
+            set_recording_error("Recording failed: ffmpeg is not installed or is not on PATH.")
         except subprocess.TimeoutExpired:
             target.unlink(missing_ok=True)
-            print("Recording failed: ffmpeg timed out.")
+            set_recording_error("Recording failed: ffmpeg timed out.")
         finally:
             with recording_lock:
                 recording_active = False
@@ -316,14 +369,21 @@ class SecurityHandler(SimpleHTTPRequestHandler):
                 captures = list_captures()
             with recording_lock:
                 is_recording = recording_active
+                recording_error = last_recording_error
+                recording_finished_at = last_recording_finished_at
             self.send_json(
                 {
                     "armed": bool(state.get("armed")),
                     "captures": captures,
                     "recording": is_recording,
+                    "recordingError": recording_error,
+                    "lastRecordingFinishedAt": recording_finished_at,
                     "lastMotionAt": last_motion_at,
                     "sensor": motion_sensor_status,
                     "captureSeconds": CAPTURE_SECONDS,
+                    "videoDevice": VIDEO_DEVICE,
+                    "audioDevice": AUDIO_DEVICE,
+                    "inputFormat": INPUT_FORMAT,
                 }
             )
             return

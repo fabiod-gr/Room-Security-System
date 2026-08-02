@@ -70,6 +70,12 @@ function renderStatus(data) {
     return;
   }
 
+  if (data.recordingError) {
+    systemSummary.textContent = "Recording failed";
+    systemDetail.textContent = data.recordingError;
+    return;
+  }
+
   if (recording) {
     systemSummary.textContent = "Recording motion event";
     systemDetail.textContent = `The Pi webcam and microphone are recording a ${data.captureSeconds}-second clip.`;

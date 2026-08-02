@@ -24,6 +24,7 @@ venv/
 *.log
 .env
 .env.*
+!.env.example
 
 # Generated security captures
 data/
@@ -31,3 +32,4 @@ captures/
 snapshots/
 recordings/
 *.webm
+*.mp4

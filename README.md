@@ -40,23 +40,27 @@ sudo apt update
 sudo apt install -y ffmpeg python3-gpiozero
 ```
 
-The server records from:
+The server reads local settings from `.env`. The included `.env.example` shows the expected values.
+
+Default recording settings:
 
 ```text
 Video: /dev/video0
-Audio: default ALSA microphone
+Audio: plughw:1,0
+PIR: GPIO17
 ```
 
-If your webcam or microphone uses a different device, set environment variables before starting the server:
+Create or edit `.env` on the Pi:
 
-```bash
-export SECURITY_VIDEO_DEVICE=/dev/video0
-export SECURITY_AUDIO_DEVICE=default
-export SECURITY_PIR_GPIO=17
-export SECURITY_CAPTURE_SECONDS=15
-export SECURITY_VIDEO_SIZE=640x480
-export SECURITY_FRAMERATE=15
-python3 server.py
+```env
+SECURITY_VIDEO_DEVICE=/dev/video0
+SECURITY_AUDIO_DEVICE=plughw:1,0
+SECURITY_PIR_GPIO=17
+SECURITY_CAPTURE_SECONDS=15
+SECURITY_VIDEO_SIZE=640x480
+SECURITY_FRAMERATE=15
+SECURITY_RECORD_COOLDOWN_SECONDS=10
+SECURITY_INPUT_FORMAT=
 ```
 
 To find audio devices:
@@ -67,8 +71,10 @@ arecord -l
 
 ## Run
 
-```powershell
-python server.py
+On the Raspberry Pi, start the server with:
+
+```bash
+python3 server.py
 ```
 
 Open:
@@ -78,6 +84,7 @@ http://localhost:8000
 ```
 
 Run this on the Raspberry Pi that has the HC-SR501 and USB webcam connected. The dashboard can be opened from another device on your network, but recording is controlled by the Pi server, not by the browser.
+If ffmpeg fails, the dashboard shows the latest recording error in the main status panel.
 
 ## Stored Data
 
