@@ -137,11 +137,14 @@ function renderCaptures(captures) {
     const title = item.querySelector("h3");
     const meta = item.querySelector("p");
     const favoriteButton = item.querySelector(".favorite-button");
+    const downloadButton = item.querySelector(".download-button");
 
     item.dataset.captureId = capture.id;
     video.src = capture.url;
     title.textContent = capture.filename;
     meta.textContent = `${formatDate(capture.createdAt)} - ${formatBytes(capture.size)}`;
+    downloadButton.href = capture.url;
+    downloadButton.download = capture.filename;
     favoriteButton.dataset.favorite = String(Boolean(capture.favorite));
     favoriteButton.textContent = capture.favorite ? "Favorited" : "Favorite";
     favoriteButton.setAttribute("aria-pressed", String(Boolean(capture.favorite)));

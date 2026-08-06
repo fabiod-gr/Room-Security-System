@@ -12,7 +12,7 @@ This project was designed to reduce unnecessary webcam runtime while still captu
 - Detect motion with an HC-SR501 PIR sensor connected to Raspberry Pi GPIO.
 - Record video from a USB webcam and audio from the webcam microphone.
 - Save clips with timestamp-based filenames.
-- View, favorite, and delete recordings from the dashboard.
+- View, download, favorite, and delete recordings from the dashboard.
 - Protect recordings from cleanup by marking them as favorites.
 - Automatically delete non-favorited clips after 15 days.
 - Require dashboard username/password authentication.
@@ -142,6 +142,7 @@ The dashboard includes:
 - Motion and recording status
 - Manual test recording button
 - Clip playback
+- Clip download
 - Favorite and delete controls
 - Latest recording error display
 
