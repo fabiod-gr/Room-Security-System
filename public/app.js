@@ -5,6 +5,7 @@ const motionMetric = document.querySelector("#motionMetric");
 const recordingMetric = document.querySelector("#recordingMetric");
 const recordingBadge = document.querySelector("#recordingBadge");
 const refreshButton = document.querySelector("#refreshButton");
+const logoutButton = document.querySelector("#logoutButton");
 const capturesList = document.querySelector("#capturesList");
 const captureTemplate = document.querySelector("#captureTemplate");
 const systemLight = document.querySelector("#systemLight");
@@ -53,6 +54,12 @@ async function saveArmedState(armed) {
 
 async function startTestRecording() {
   return api("/api/test-recording", {
+    method: "POST",
+  });
+}
+
+async function logout() {
+  return api("/api/logout", {
     method: "POST",
   });
 }
@@ -158,6 +165,14 @@ armedToggle.addEventListener("change", async () => {
 
 refreshButton.addEventListener("click", () => {
   loadStatus().catch(console.error);
+});
+
+logoutButton.addEventListener("click", async () => {
+  try {
+    await logout();
+  } finally {
+    window.location.href = "/login";
+  }
 });
 
 testRecordingButton.addEventListener("click", async () => {

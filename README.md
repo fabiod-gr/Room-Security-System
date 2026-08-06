@@ -64,7 +64,12 @@ SECURITY_VIDEO_SIZE=640x480
 SECURITY_FRAMERATE=15
 SECURITY_RECORD_COOLDOWN_SECONDS=10
 SECURITY_INPUT_FORMAT=mjpeg
+SECURITY_DASHBOARD_USERNAME=admin
+SECURITY_DASHBOARD_PASSWORD=change-this-password
+SECURITY_SESSION_MAX_AGE_SECONDS=86400
 ```
+
+Change `SECURITY_DASHBOARD_PASSWORD` before exposing the dashboard outside your local network.
 
 To find the correct webcam video device:
 
@@ -119,3 +124,5 @@ Recordings and metadata are stored under `data/`, which is ignored by Git. Non-f
 ## Remote Access
 
 For access outside the local network, use Cloudflare Tunnel with Cloudflare Access or another authentication layer. Do not expose the dashboard publicly without authentication because it controls recording state and provides access to saved clips.
+
+This project also includes dashboard username/password protection. Use it together with Cloudflare Access for defense in depth.

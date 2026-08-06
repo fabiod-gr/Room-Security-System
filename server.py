@@ -1,11 +1,14 @@
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
+from http import cookies
 from urllib.parse import unquote, urlparse
+import hmac
 import json
 import mimetypes
 import os
 import queue
 import re
+import secrets
 import subprocess
 import threading
 import time
@@ -49,11 +52,17 @@ INPUT_FORMAT = os.environ.get("SECURITY_INPUT_FORMAT", "").strip()
 VIDEO_SIZE = os.environ.get("SECURITY_VIDEO_SIZE", "640x480")
 FRAMERATE = os.environ.get("SECURITY_FRAMERATE", "15")
 audio_enabled = AUDIO_DEVICE.lower() not in {"", "none", "off", "false", "0"}
+DASHBOARD_USERNAME = os.environ.get("SECURITY_DASHBOARD_USERNAME", "admin")
+DASHBOARD_PASSWORD = os.environ.get("SECURITY_DASHBOARD_PASSWORD", "")
+SESSION_COOKIE_NAME = "room_security_session"
+SESSION_MAX_AGE_SECONDS = int(os.environ.get("SECURITY_SESSION_MAX_AGE_SECONDS", "86400"))
 
 state_lock = threading.Lock()
 recording_lock = threading.Lock()
 event_clients_lock = threading.Lock()
+sessions_lock = threading.Lock()
 event_clients = []
+sessions = {}
 recording_active = False
 last_recording_started_at = 0
 last_recording_error = None
@@ -69,6 +78,38 @@ motion_sensor_status = {
 
 def utc_now():
     return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+def auth_enabled():
+    return bool(DASHBOARD_PASSWORD)
+
+
+def create_session():
+    token = secrets.token_urlsafe(32)
+    expires_at = time.time() + SESSION_MAX_AGE_SECONDS
+    with sessions_lock:
+        sessions[token] = expires_at
+    return token
+
+
+def delete_session(token):
+    with sessions_lock:
+        sessions.pop(token, None)
+
+
+def is_valid_session(token):
+    if not token:
+        return False
+
+    now = time.time()
+    with sessions_lock:
+        expires_at = sessions.get(token)
+        if not expires_at:
+            return False
+        if expires_at < now:
+            sessions.pop(token, None)
+            return False
+    return True
 
 
 def ensure_storage():
@@ -407,6 +448,40 @@ class SecurityHandler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def get_session_token(self):
+        header = self.headers.get("Cookie", "")
+        parsed = cookies.SimpleCookie()
+        parsed.load(header)
+        morsel = parsed.get(SESSION_COOKIE_NAME)
+        return morsel.value if morsel else ""
+
+    def is_authenticated(self):
+        return not auth_enabled() or is_valid_session(self.get_session_token())
+
+    def send_auth_required(self):
+        if self.path.startswith("/api/"):
+            self.send_json({"error": "Authentication required."}, status=401)
+            return
+
+        self.send_response(302)
+        self.send_header("Location", "/login")
+        self.end_headers()
+
+    def set_session_cookie(self, token):
+        self.send_header(
+            "Set-Cookie",
+            (
+                f"{SESSION_COOKIE_NAME}={token}; "
+                f"Max-Age={SESSION_MAX_AGE_SECONDS}; Path=/; HttpOnly; SameSite=Lax"
+            ),
+        )
+
+    def clear_session_cookie(self):
+        self.send_header(
+            "Set-Cookie",
+            f"{SESSION_COOKIE_NAME}=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax",
+        )
+
     def read_request_json(self):
         length = int(self.headers.get("Content-Length", "0"))
         if length <= 0:
@@ -416,6 +491,22 @@ class SecurityHandler(SimpleHTTPRequestHandler):
 
     def do_GET(self):
         parsed = urlparse(self.path)
+        if parsed.path == "/login":
+            if not auth_enabled():
+                self.send_response(302)
+                self.send_header("Location", "/")
+                self.end_headers()
+                return
+            self.path = "/login.html"
+            return super().do_GET()
+
+        if parsed.path in {"/styles.css", "/favicon.ico", "/login.js"}:
+            return super().do_GET()
+
+        if not self.is_authenticated():
+            self.send_auth_required()
+            return
+
         if parsed.path == "/api/events":
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream")
@@ -493,6 +584,51 @@ class SecurityHandler(SimpleHTTPRequestHandler):
 
     def do_POST(self):
         parsed = urlparse(self.path)
+        if parsed.path == "/api/login":
+            try:
+                payload = self.read_request_json()
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                self.send_json({"error": "Invalid JSON body."}, status=400)
+                return
+
+            username_ok = hmac.compare_digest(
+                str(payload.get("username", "")),
+                DASHBOARD_USERNAME,
+            )
+            password_ok = auth_enabled() and hmac.compare_digest(
+                str(payload.get("password", "")),
+                DASHBOARD_PASSWORD,
+            )
+
+            if not username_ok or not password_ok:
+                self.send_json({"error": "Invalid username or password."}, status=401)
+                return
+
+            token = create_session()
+            body = json.dumps({"authenticated": True}).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.set_session_cookie(token)
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        if not self.is_authenticated():
+            self.send_auth_required()
+            return
+
+        if parsed.path == "/api/logout":
+            delete_session(self.get_session_token())
+            body = json.dumps({"authenticated": False}).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.clear_session_cookie()
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
         if parsed.path == "/api/status":
             try:
                 payload = self.read_request_json()
@@ -540,6 +676,10 @@ class SecurityHandler(SimpleHTTPRequestHandler):
 
     def do_PATCH(self):
         parsed = urlparse(self.path)
+        if not self.is_authenticated():
+            self.send_auth_required()
+            return
+
         if parsed.path.startswith("/api/captures/"):
             capture_id = unquote(parsed.path.removeprefix("/api/captures/"))
             try:
@@ -562,6 +702,10 @@ class SecurityHandler(SimpleHTTPRequestHandler):
 
     def do_DELETE(self):
         parsed = urlparse(self.path)
+        if not self.is_authenticated():
+            self.send_auth_required()
+            return
+
         if parsed.path.startswith("/api/captures/"):
             capture_id = unquote(parsed.path.removeprefix("/api/captures/"))
 

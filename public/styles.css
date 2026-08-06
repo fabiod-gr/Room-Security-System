@@ -91,6 +91,12 @@ button:disabled {
   gap: 16px;
 }
 
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 .eyebrow {
   margin: 0 0 4px;
   color: var(--accent);
@@ -371,6 +377,50 @@ h1 {
   text-align: center;
 }
 
+.login-page {
+  display: grid;
+  place-items: center;
+  padding: 18px;
+}
+
+.login-shell {
+  width: min(100%, 420px);
+}
+
+.login-panel {
+  display: grid;
+  gap: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 22px;
+  background: var(--panel);
+}
+
+.login-panel h1 {
+  margin-bottom: 8px;
+  font-size: 2.2rem;
+}
+
+.login-field {
+  display: grid;
+  gap: 8px;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.login-field input {
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 12px;
+  background: var(--panel-strong);
+  color: var(--text);
+}
+
+.login-error {
+  color: var(--danger);
+}
+
 @media (max-width: 900px) {
   .app-shell {
     grid-template-columns: 1fr;
@@ -389,6 +439,11 @@ h1 {
   .topbar {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .topbar-actions {
+    width: 100%;
+    justify-content: space-between;
   }
 
   .controls > *,
