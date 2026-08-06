@@ -1,40 +1,47 @@
 # Room Security System
 
-A Raspberry Pi-based room security system that records video and audio only when motion is detected while the system is armed. The project uses an HC-SR501 PIR motion sensor as the trigger, a USB webcam for capture, and a browser dashboard for control and clip management.
+A Raspberry Pi-based motion-triggered security system for a room. The system uses an HC-SR501 PIR motion sensor to detect movement, records video and audio from a USB webcam only when armed, and provides a password-protected web dashboard for viewing and managing captured clips.
+
+## Overview
+
+This project was designed to reduce unnecessary webcam runtime while still capturing useful security footage. Instead of keeping the camera active continuously, the Raspberry Pi monitors a PIR motion sensor through GPIO. When motion is detected and the system is armed, the Pi records a short video/audio clip with `ffmpeg`, stores it locally, and makes it available through the dashboard.
 
 ## Features
 
-- Arm and disarm the security system from a web dashboard.
-- Trigger recordings from an HC-SR501 PIR motion sensor connected to Raspberry Pi GPIO.
-- Record video from a USB webcam and audio from the webcam microphone with `ffmpeg`.
-- Save timestamped clips locally and display them in the dashboard.
-- Favorite important clips so they are excluded from automatic cleanup.
-- Delete unwanted clips from the dashboard.
+- Arm and disarm the system from a browser dashboard.
+- Detect motion with an HC-SR501 PIR sensor connected to Raspberry Pi GPIO.
+- Record video from a USB webcam and audio from the webcam microphone.
+- Save clips with timestamp-based filenames.
+- View, favorite, and delete recordings from the dashboard.
+- Protect recordings from cleanup by marking them as favorites.
 - Automatically delete non-favorited clips after 15 days.
-- Update the dashboard automatically only when a new recording is saved.
-- Provide a manual test recording button for validating webcam and microphone setup.
-
-## Project Layout
-
-```text
-.
-├── public/        # Dashboard HTML, CSS, JavaScript, and favicon
-├── server.py      # Web server, API, GPIO listener, and recording logic
-├── .env.example   # Example Raspberry Pi configuration
-├── README.md
-└── .gitignore
-```
+- Require dashboard username/password authentication.
+- Refresh the dashboard automatically only when a new clip is saved.
+- Provide a manual test recording button for hardware validation.
+- Support remote access through Cloudflare Tunnel and Cloudflare Access.
 
 ## Hardware
 
 - Raspberry Pi 3 Model B+
 - HC-SR501 PIR motion sensor
-- USB webcam with built-in microphone
+- USB webcam with built-in microphone, tested with a Logitech C270
 - Official Raspberry Pi power supply or another stable 5V supply rated for the Pi and webcam
+- Female-to-female jumper wires
+
+## Project Layout
+
+```text
+.
+|-- public/        # Dashboard HTML, CSS, JavaScript, and favicon
+|-- server.py      # Web server, API, GPIO listener, and recording logic
+|-- .env.example   # Example Raspberry Pi configuration
+|-- README.md
+`-- .gitignore
+```
 
 ## Wiring
 
-Wire the HC-SR501 to the Raspberry Pi:
+Wire the HC-SR501 PIR sensor to the Raspberry Pi:
 
 ```text
 HC-SR501 GND  -> Pi GND
@@ -42,13 +49,27 @@ HC-SR501 OUT  -> Pi physical pin 11 / BCM GPIO17
 HC-SR501 VCC  -> Pi 5V
 ```
 
-## Raspberry Pi Dependencies
+The project defaults to BCM GPIO17, which corresponds to physical pin 11 on the Raspberry Pi 3 Model B+.
 
-Install the required packages on the Pi:
+## Raspberry Pi Setup
+
+Install the required packages:
 
 ```bash
 sudo apt update
 sudo apt install -y ffmpeg python3-gpiozero v4l-utils alsa-utils
+```
+
+Confirm the webcam is detected:
+
+```bash
+v4l2-ctl --list-devices
+```
+
+Confirm the webcam microphone device:
+
+```bash
+arecord -l
 ```
 
 ## Configuration
@@ -69,60 +90,131 @@ SECURITY_DASHBOARD_PASSWORD=change-this-password
 SECURITY_SESSION_MAX_AGE_SECONDS=86400
 ```
 
-Change `SECURITY_DASHBOARD_PASSWORD` before exposing the dashboard outside your local network.
+Before using the dashboard remotely, change:
 
-To find the correct webcam video device:
-
-```bash
-v4l2-ctl --list-devices
+```env
+SECURITY_DASHBOARD_PASSWORD=change-this-password
 ```
 
-To find the correct webcam microphone device:
+to a strong private password.
 
-```bash
-arecord -l
-```
-
-If audio causes recording failures, temporarily disable audio to isolate the issue:
+If audio causes recording failures, temporarily disable audio:
 
 ```env
 SECURITY_AUDIO_DEVICE=none
 ```
 
-Set it back to the webcam microphone device after audio is working.
+If video-only recording works, update `SECURITY_AUDIO_DEVICE` with the correct microphone device from `arecord -l`.
 
-## Run
+## Running The Server
 
-Start the server from the project directory:
+Start the system from the project directory:
 
 ```bash
 python3 server.py
 ```
 
-Open the dashboard:
+Open the dashboard locally on the Pi:
 
 ```text
 http://localhost:8000
 ```
 
-From another device on the same network, use the Raspberry Pi IP address:
+From another device on the same network, use the Pi IP address:
 
 ```text
 http://<pi-ip-address>:8000
 ```
 
-## Dashboard Updates
+To find the Pi IP address:
 
-The dashboard loads the current system state when opened and when the Refresh button is clicked. It does not poll continuously. Instead, it uses a server-sent event connection and refreshes automatically only when a new recording is saved.
+```bash
+hostname -I
+```
 
-If a recording fails, the latest `ffmpeg` error is shown in the dashboard status panel after a manual refresh.
+## Dashboard Behavior
 
-## Stored Data
+The dashboard loads system state when opened and when the Refresh button is clicked. It does not continuously poll. Instead, the server sends an event when a new recording is saved, and the dashboard refreshes automatically at that point.
 
-Recordings and metadata are stored under `data/`, which is ignored by Git. Non-favorited clips older than 15 days are deleted when the server starts, when status is loaded, or after a new clip is saved. Favorited clips are skipped by cleanup.
+The dashboard includes:
+
+- Armed/unarmed status
+- Motion and recording status
+- Manual test recording button
+- Clip playback
+- Favorite and delete controls
+- Latest recording error display
+
+## Storage
+
+Recordings and metadata are stored in:
+
+```text
+data/
+```
+
+The `data/` directory is ignored by Git. Non-favorited clips older than 15 days are deleted when the server starts, when status is loaded, or after a new clip is saved. Favorited clips are excluded from automatic cleanup.
 
 ## Remote Access
 
-For access outside the local network, use Cloudflare Tunnel with Cloudflare Access or another authentication layer. Do not expose the dashboard publicly without authentication because it controls recording state and provides access to saved clips.
+For remote access, use Cloudflare Tunnel to expose the local dashboard through a domain, for example:
 
-This project also includes dashboard username/password protection. Use it together with Cloudflare Access for defense in depth.
+```text
+https://security.example.com
+```
+
+Recommended remote access layers:
+
+- Cloudflare Tunnel for public routing without opening router ports
+- Cloudflare Access for identity-based access control
+- Built-in dashboard username/password authentication
+
+Do not expose the dashboard publicly without authentication. The dashboard controls the armed state and provides access to saved recordings.
+
+## Running On Boot
+
+For unattended operation, run the server as a `systemd` service on the Raspberry Pi. The service should point to the project directory and execute:
+
+```bash
+python3 server.py
+```
+
+Cloudflare Tunnel should also be enabled as a service so both the dashboard and tunnel restart automatically after the Pi boots.
+
+## Troubleshooting
+
+Check power health:
+
+```bash
+vcgencmd get_throttled
+```
+
+Expected result:
+
+```text
+throttled=0x0
+```
+
+Check available video devices:
+
+```bash
+ls /dev/video*
+v4l2-ctl --list-devices
+```
+
+Check available audio devices:
+
+```bash
+arecord -l
+```
+
+View service logs if running under `systemd`:
+
+```bash
+sudo journalctl -u room-security -f
+sudo journalctl -u cloudflared -f
+```
+
+## Resume Summary
+
+This project demonstrates embedded hardware integration, GPIO event handling, Linux service deployment, video/audio capture, local web application development, authentication, storage management, and secure remote access.
