@@ -1,14 +1,15 @@
 :root {
   color-scheme: dark;
-  --bg: #101214;
-  --panel: #191d20;
-  --panel-strong: #20262a;
-  --text: #f4f7f8;
-  --muted: #9ba7ad;
-  --line: #333b40;
-  --accent: #2ed3a3;
-  --danger: #ff5c5c;
-  --warning: #f3c969;
+  --bg: #03070d;
+  --panel: #07111e;
+  --panel-strong: #0d1b2d;
+  --text: #eef7ff;
+  --muted: #8ea8c4;
+  --line: #1c3552;
+  --accent: #67c7ff;
+  --accent-strong: #1f8fd1;
+  --danger: #ff5f7a;
+  --warning: #8ccfff;
 }
 
 * {
@@ -50,7 +51,7 @@ button:disabled {
 .primary-button {
   border-color: transparent;
   background: var(--accent);
-  color: #07110e;
+  color: #03101a;
   font-weight: 700;
 }
 
@@ -135,7 +136,7 @@ h1 {
   height: 30px;
   border: 1px solid var(--line);
   border-radius: 999px;
-  background: #343a3f;
+  background: #132235;
   position: relative;
 }
 
@@ -152,13 +153,13 @@ h1 {
 }
 
 .arm-switch input:checked + .track {
-  background: rgba(255, 92, 92, 0.25);
-  border-color: var(--danger);
+  background: rgba(103, 199, 255, 0.2);
+  border-color: var(--accent);
 }
 
 .arm-switch input:checked + .track::after {
   transform: translateX(24px);
-  background: var(--danger);
+  background: var(--accent);
 }
 
 .sensor-panel {
@@ -174,7 +175,7 @@ h1 {
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #121619;
+  background: #060d17;
 }
 
 .sensor-panel h2 {
@@ -199,13 +200,13 @@ h1 {
   height: 58px;
   border: 1px solid var(--line);
   border-radius: 50%;
-  background: #3a4247;
+  background: #15263a;
   box-shadow: inset 0 0 0 10px rgba(255, 255, 255, 0.04);
 }
 
 .system-light[data-state="armed"] {
   background: var(--accent);
-  box-shadow: 0 0 28px rgba(46, 211, 163, 0.28);
+  box-shadow: 0 0 28px rgba(103, 199, 255, 0.28);
 }
 
 .system-light[data-state="recording"] {
@@ -329,13 +330,13 @@ h1 {
 
 .favorite-button {
   min-width: 92px;
-  border-color: rgba(243, 201, 105, 0.45);
+  border-color: rgba(140, 207, 255, 0.45);
   color: var(--warning);
 }
 
 .favorite-button[aria-pressed="true"] {
   background: var(--warning);
-  color: #141006;
+  color: #03101a;
   font-weight: 700;
 }
 
