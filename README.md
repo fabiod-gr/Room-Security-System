@@ -57,7 +57,7 @@ Create a `.env` file on the Raspberry Pi. Use `.env.example` as a starting point
 
 ```env
 SECURITY_VIDEO_DEVICE=/dev/video0
-SECURITY_AUDIO_DEVICE=plughw:1,0
+SECURITY_AUDIO_DEVICE=plughw:2,0
 SECURITY_PIR_GPIO=17
 SECURITY_CAPTURE_SECONDS=15
 SECURITY_VIDEO_SIZE=640x480
