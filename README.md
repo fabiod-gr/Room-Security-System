@@ -1,31 +1,40 @@
-# Fabio's Chopped Ass Room Security System
+# Room Security System
 
-Y'know, it really pisses me off when people enter my room whenever I'm not home and move my shit around so I decided to vibecode this silly security system to help alleviate this problem
+A Raspberry Pi-based room security system that records video and audio only when motion is detected while the system is armed. The project uses an HC-SR501 PIR motion sensor as the trigger, a USB webcam for capture, and a browser dashboard for control and clip management.
+
+## Features
+
+- Arm and disarm the security system from a web dashboard.
+- Trigger recordings from an HC-SR501 PIR motion sensor connected to Raspberry Pi GPIO.
+- Record video from a USB webcam and audio from the webcam microphone with `ffmpeg`.
+- Save timestamped clips locally and display them in the dashboard.
+- Favorite important clips so they are excluded from automatic cleanup.
+- Delete unwanted clips from the dashboard.
+- Automatically delete non-favorited clips after 15 days.
+- Update the dashboard automatically only when a new recording is saved.
+- Provide a manual test recording button for validating webcam and microphone setup.
 
 ## Project Layout
 
 ```text
 .
-├── public/        # Browser dashboard files
-├── server.py      # Local web/API server
+├── public/        # Dashboard HTML, CSS, JavaScript, and favicon
+├── server.py      # Web server, API, GPIO listener, and recording logic
+├── .env.example   # Example Raspberry Pi configuration
 ├── README.md
 └── .gitignore
 ```
 
-## Features
+## Hardware
 
-- Arm and unarm the room monitor from the dashboard.
-- Use an HC-SR501 PIR motion sensor on the Raspberry Pi as the recording trigger.
-- Record from a USB webcam only when motion is detected while armed.
-- Include audio from the webcam microphone in recorded clips.
-- Upload captured clips to the server and list them on the dashboard.
-- Favorite important clips so they are kept.
-- Delete unwanted clips from the dashboard.
-- Automatically delete non-favorited clips after 15 days.
+- Raspberry Pi 3 Model B+
+- HC-SR501 PIR motion sensor
+- USB webcam with built-in microphone
+- Official Raspberry Pi power supply or another stable 5V supply rated for the Pi and webcam
 
-## Raspberry Pi Setup
+## Wiring
 
-Wire the HC-SR501 to the Raspberry Pi 3 B+:
+Wire the HC-SR501 to the Raspberry Pi:
 
 ```text
 HC-SR501 GND  -> Pi GND
@@ -33,24 +42,18 @@ HC-SR501 OUT  -> Pi physical pin 11 / BCM GPIO17
 HC-SR501 VCC  -> Pi 5V
 ```
 
-Install the Pi dependencies:
+## Raspberry Pi Dependencies
+
+Install the required packages on the Pi:
 
 ```bash
 sudo apt update
-sudo apt install -y ffmpeg python3-gpiozero
+sudo apt install -y ffmpeg python3-gpiozero v4l-utils alsa-utils
 ```
 
-The server reads local settings from `.env`. The included `.env.example` shows the expected values.
+## Configuration
 
-Default recording settings:
-
-```text
-Video: /dev/video0
-Audio: plughw:1,0
-PIR: GPIO17
-```
-
-Create or edit `.env` on the Pi:
+Create a `.env` file on the Raspberry Pi. Use `.env.example` as a starting point:
 
 ```env
 SECURITY_VIDEO_DEVICE=/dev/video0
@@ -63,38 +66,56 @@ SECURITY_RECORD_COOLDOWN_SECONDS=10
 SECURITY_INPUT_FORMAT=mjpeg
 ```
 
-To find audio devices:
+To find the correct webcam video device:
+
+```bash
+v4l2-ctl --list-devices
+```
+
+To find the correct webcam microphone device:
 
 ```bash
 arecord -l
 ```
 
-If recording fails and you need to isolate whether the webcam microphone is the problem, temporarily set:
+If audio causes recording failures, temporarily disable audio to isolate the issue:
 
 ```env
 SECURITY_AUDIO_DEVICE=none
 ```
 
-That records video only. Set it back to your webcam microphone device once audio is working.
+Set it back to the webcam microphone device after audio is working.
 
 ## Run
 
-On the Raspberry Pi, start the server with:
+Start the server from the project directory:
 
 ```bash
 python3 server.py
 ```
 
-Open:
+Open the dashboard:
 
 ```text
 http://localhost:8000
 ```
 
-Run this on the Raspberry Pi that has the HC-SR501 and USB webcam connected. The dashboard can be opened from another device on your network, but recording is controlled by the Pi server, not by the browser.
-If ffmpeg fails, the dashboard shows the latest recording error in the main status panel.
+From another device on the same network, use the Raspberry Pi IP address:
+
+```text
+http://<pi-ip-address>:8000
+```
+
+## Dashboard Updates
+
+The dashboard loads the current system state when opened and when the Refresh button is clicked. It does not poll continuously. Instead, it uses a server-sent event connection and refreshes automatically only when a new recording is saved.
+
+If a recording fails, the latest `ffmpeg` error is shown in the dashboard status panel after a manual refresh.
 
 ## Stored Data
 
-Uploaded clips and metadata are written under `data/`, which is ignored by Git.
-Non-favorited clips older than 15 days are deleted when the server starts, when the dashboard loads status, or after a new clip uploads. Favorited clips are skipped by that cleanup.
+Recordings and metadata are stored under `data/`, which is ignored by Git. Non-favorited clips older than 15 days are deleted when the server starts, when status is loaded, or after a new clip is saved. Favorited clips are skipped by cleanup.
+
+## Remote Access
+
+For access outside the local network, use Cloudflare Tunnel with Cloudflare Access or another authentication layer. Do not expose the dashboard publicly without authentication because it controls recording state and provides access to saved clips.

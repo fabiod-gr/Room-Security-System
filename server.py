@@ -4,6 +4,7 @@ from urllib.parse import unquote, urlparse
 import json
 import mimetypes
 import os
+import queue
 import re
 import subprocess
 import threading
@@ -51,6 +52,8 @@ audio_enabled = AUDIO_DEVICE.lower() not in {"", "none", "off", "false", "0"}
 
 state_lock = threading.Lock()
 recording_lock = threading.Lock()
+event_clients_lock = threading.Lock()
+event_clients = []
 recording_active = False
 last_recording_started_at = 0
 last_recording_error = None
@@ -199,7 +202,32 @@ def add_capture_record(filename, trigger):
     captures = prune_old_captures()
     captures.insert(0, record)
     write_json(MANIFEST_PATH, captures[:200])
+    notify_capture_added(record)
     return record
+
+
+def notify_capture_added(record):
+    with event_clients_lock:
+        clients = list(event_clients)
+
+    for client in clients:
+        try:
+            client.put_nowait({"type": "capture-added", "capture": record})
+        except queue.Full:
+            unregister_event_client(client)
+
+
+def register_event_client():
+    client = queue.Queue(maxsize=10)
+    with event_clients_lock:
+        event_clients.append(client)
+    return client
+
+
+def unregister_event_client(client):
+    with event_clients_lock:
+        if client in event_clients:
+            event_clients.remove(client)
 
 
 def build_recording_command(target):
@@ -388,6 +416,35 @@ class SecurityHandler(SimpleHTTPRequestHandler):
 
     def do_GET(self):
         parsed = urlparse(self.path)
+        if parsed.path == "/api/events":
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("Connection", "keep-alive")
+            self.end_headers()
+
+            client = register_event_client()
+            try:
+                self.wfile.write(b": connected\n\n")
+                self.wfile.flush()
+                while True:
+                    try:
+                        event = client.get(timeout=30)
+                    except queue.Empty:
+                        self.wfile.write(b": heartbeat\n\n")
+                        self.wfile.flush()
+                        continue
+
+                    body = json.dumps(event).encode("utf-8")
+                    self.wfile.write(b"event: security-update\n")
+                    self.wfile.write(b"data: " + body + b"\n\n")
+                    self.wfile.flush()
+            except (BrokenPipeError, ConnectionResetError, TimeoutError):
+                pass
+            finally:
+                unregister_event_client(client)
+            return
+
         if parsed.path == "/api/status":
             with state_lock:
                 prune_old_captures()

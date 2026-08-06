@@ -12,7 +12,7 @@ const systemSummary = document.querySelector("#systemSummary");
 const systemDetail = document.querySelector("#systemDetail");
 const testRecordingButton = document.querySelector("#testRecordingButton");
 
-let refreshTimer = null;
+let eventSource = null;
 
 function formatBytes(bytes) {
   if (bytes < 1024) return `${bytes} B`;
@@ -168,9 +168,7 @@ testRecordingButton.addEventListener("click", async () => {
   } catch (error) {
     console.error(error);
   } finally {
-    window.setTimeout(() => {
-      loadStatus().catch(console.error);
-    }, 1000);
+    testRecordingButton.disabled = false;
   }
 });
 
@@ -212,11 +210,27 @@ capturesList.addEventListener("click", async (event) => {
   }
 });
 
-loadStatus().catch(console.error);
-refreshTimer = window.setInterval(() => {
-  loadStatus().catch(console.error);
-}, 5000);
+function listenForCaptureEvents() {
+  if (!window.EventSource) return;
+
+  eventSource = new EventSource("/api/events");
+  eventSource.addEventListener("security-update", (event) => {
+    const update = JSON.parse(event.data);
+    if (update.type === "capture-added") {
+      loadStatus().catch(console.error);
+    }
+  });
+
+  eventSource.addEventListener("error", () => {
+    console.error("Lost dashboard update connection.");
+  });
+}
 
 window.addEventListener("beforeunload", () => {
-  window.clearInterval(refreshTimer);
+  if (eventSource) {
+    eventSource.close();
+  }
 });
+
+loadStatus().catch(console.error);
+listenForCaptureEvents();
