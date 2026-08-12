@@ -21,6 +21,7 @@ DATA_DIR = ROOT / "data"
 CAPTURE_DIR = DATA_DIR / "captures"
 MANIFEST_PATH = DATA_DIR / "captures.json"
 STATE_PATH = DATA_DIR / "state.json"
+SERVER_STARTED_AT = time.monotonic()
 
 
 def load_env_file(path):
@@ -64,6 +65,7 @@ sessions_lock = threading.Lock()
 event_clients = []
 sessions = {}
 recording_active = False
+recording_trigger = None
 last_recording_started_at = 0
 last_recording_error = None
 last_recording_finished_at = None
@@ -355,7 +357,7 @@ def clear_recording_error():
 
 
 def record_from_pi_camera(trigger="motion"):
-    global recording_active, last_recording_started_at
+    global recording_active, recording_trigger, last_recording_started_at
 
     with recording_lock:
         now = time.monotonic()
@@ -364,11 +366,12 @@ def record_from_pi_camera(trigger="motion"):
         if trigger != "test" and not is_armed():
             return False
         recording_active = True
+        recording_trigger = trigger
         last_recording_started_at = now
         clear_recording_error()
 
     def worker():
-        global recording_active, last_recording_finished_at
+        global recording_active, recording_trigger, last_recording_finished_at
 
         filename = unique_capture_name(".mp4")
         target = CAPTURE_DIR / filename
@@ -402,6 +405,7 @@ def record_from_pi_camera(trigger="motion"):
         finally:
             with recording_lock:
                 recording_active = False
+                recording_trigger = None
 
     threading.Thread(target=worker, daemon=True).start()
     return True
@@ -543,6 +547,7 @@ class SecurityHandler(SimpleHTTPRequestHandler):
                 captures = list_captures()
             with recording_lock:
                 is_recording = recording_active
+                current_recording_trigger = recording_trigger
                 recording_error = last_recording_error
                 recording_finished_at = last_recording_finished_at
             self.send_json(
@@ -550,6 +555,7 @@ class SecurityHandler(SimpleHTTPRequestHandler):
                     "armed": bool(state.get("armed")),
                     "captures": captures,
                     "recording": is_recording,
+                    "recordingTrigger": current_recording_trigger,
                     "recordingError": recording_error,
                     "lastRecordingFinishedAt": recording_finished_at,
                     "lastMotionAt": last_motion_at,
@@ -559,6 +565,7 @@ class SecurityHandler(SimpleHTTPRequestHandler):
                     "audioDevice": AUDIO_DEVICE,
                     "audioEnabled": audio_enabled,
                     "inputFormat": INPUT_FORMAT,
+                    "uptimeSeconds": int(time.monotonic() - SERVER_STARTED_AT),
                 }
             )
             return

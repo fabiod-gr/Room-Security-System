@@ -68,7 +68,7 @@ button:disabled {
 
 .app-shell {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 390px;
+  grid-template-columns: minmax(0, 1fr) 460px;
   gap: 18px;
   min-height: 100vh;
   padding: 18px;
@@ -269,7 +269,7 @@ h1 {
 
 .status-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: minmax(92px, 0.75fr) minmax(150px, 1.25fr) minmax(150px, 1fr);
   gap: 8px;
   margin-bottom: 18px;
 }
@@ -286,6 +286,7 @@ h1 {
   margin-bottom: 6px;
   color: var(--muted);
   font-size: 0.76rem;
+  line-height: 1.25;
 }
 
 .status-grid strong {
@@ -312,7 +313,7 @@ h1 {
 
 .capture-card {
   display: grid;
-  grid-template-columns: 120px minmax(0, 1fr) auto;
+  grid-template-columns: 132px minmax(0, 1fr) auto;
   gap: 12px;
   align-items: center;
   border: 1px solid var(--line);
@@ -322,7 +323,7 @@ h1 {
 }
 
 .capture-card video {
-  width: 120px;
+  width: 132px;
   aspect-ratio: 16 / 9;
   border-radius: 6px;
   background: #050607;

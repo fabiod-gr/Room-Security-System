@@ -2,7 +2,7 @@ const armedToggle = document.querySelector("#armedToggle");
 const armedLabel = document.querySelector("#armedLabel");
 const modeMetric = document.querySelector("#modeMetric");
 const motionMetric = document.querySelector("#motionMetric");
-const recordingMetric = document.querySelector("#recordingMetric");
+const uptimeMetric = document.querySelector("#uptimeMetric");
 const recordingBadge = document.querySelector("#recordingBadge");
 const refreshButton = document.querySelector("#refreshButton");
 const logoutButton = document.querySelector("#logoutButton");
@@ -14,6 +14,8 @@ const systemDetail = document.querySelector("#systemDetail");
 const testRecordingButton = document.querySelector("#testRecordingButton");
 
 let eventSource = null;
+let uptimeStartedAt = null;
+let uptimeBaseSeconds = 0;
 
 function formatBytes(bytes) {
   if (bytes < 1024) return `${bytes} B`;
@@ -29,6 +31,20 @@ function formatDate(value) {
   }).format(new Date(value));
 }
 
+function formatUptime(seconds) {
+  const totalMinutes = Math.max(0, Math.floor(seconds / 60));
+  const days = Math.floor(totalMinutes / 1440);
+  const hours = Math.floor((totalMinutes % 1440) / 60);
+  const minutes = totalMinutes % 60;
+  return `${days}d ${hours}h ${minutes}m`;
+}
+
+function renderUptime() {
+  if (!uptimeStartedAt) return;
+  const elapsedSeconds = (Date.now() - uptimeStartedAt) / 1000;
+  uptimeMetric.textContent = formatUptime(uptimeBaseSeconds + elapsedSeconds);
+}
+
 async function api(path, options = {}) {
   const response = await fetch(path, options);
   if (!response.ok) {
@@ -42,6 +58,7 @@ async function loadStatus() {
   const data = await api("/api/status");
   renderStatus(data);
   renderCaptures(data.captures);
+  return data;
 }
 
 async function saveArmedState(armed) {
@@ -73,7 +90,9 @@ function renderStatus(data) {
   armedLabel.textContent = armed ? "Armed" : "Unarmed";
   modeMetric.textContent = armed ? "Armed" : "Unarmed";
   motionMetric.textContent = data.lastMotionAt ? formatDate(data.lastMotionAt) : "No motion";
-  recordingMetric.textContent = recording ? "Recording" : "Idle";
+  uptimeStartedAt = Date.now();
+  uptimeBaseSeconds = Number(data.uptimeSeconds || 0);
+  renderUptime();
   recordingBadge.hidden = !recording;
   testRecordingButton.disabled = recording;
 
@@ -92,19 +111,22 @@ function renderStatus(data) {
   }
 
   if (recording) {
-    systemSummary.textContent = "Recording motion event";
-    systemDetail.textContent = `The Pi webcam and microphone are recording a ${data.captureSeconds}-second clip.`;
+    systemSummary.textContent =
+      data.recordingTrigger === "test"
+        ? "Test Recording in Progress."
+        : "Motion Detected! Recording in Progress.";
+    systemDetail.textContent = "";
     return;
   }
 
   if (armed) {
     systemSummary.textContent = "Watching for motion";
-    systemDetail.textContent = "The webcam is off until the HC-SR501 detects motion.";
+    systemDetail.textContent = "";
     return;
   }
 
   systemSummary.textContent = "System unarmed";
-  systemDetail.textContent = "Motion can be detected, but clips are only recorded while armed.";
+  systemDetail.textContent = "";
 }
 
 async function setCaptureFavorite(id, favorite) {
@@ -180,15 +202,21 @@ logoutButton.addEventListener("click", async () => {
 
 testRecordingButton.addEventListener("click", async () => {
   testRecordingButton.disabled = true;
+  systemLight.dataset.state = "recording";
+  recordingBadge.hidden = false;
+  systemSummary.textContent = "Test Recording in Progress.";
+  systemDetail.textContent = "";
+
   try {
     await startTestRecording();
     await loadStatus();
   } catch (error) {
-    console.error(error);
-  } finally {
     testRecordingButton.disabled = false;
+    console.error(error);
   }
 });
+
+setInterval(renderUptime, 1000);
 
 capturesList.addEventListener("click", async (event) => {
   const deleteButton = event.target.closest(".delete-button");
