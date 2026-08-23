@@ -138,6 +138,14 @@ async function setCaptureFavorite(id, favorite) {
   });
 }
 
+async function setCaptureViewed(id) {
+  return api(`/api/captures/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ viewed: true }),
+  });
+}
+
 async function deleteCapture(id) {
   return api(`/api/captures/${encodeURIComponent(id)}`, {
     method: "DELETE",
@@ -166,8 +174,10 @@ function renderCaptures(captures) {
     const downloadButton = item.querySelector(".download-button");
     const deleteButton = item.querySelector(".delete-button");
     const isFavorite = Boolean(capture.favorite);
+    const isViewed = Boolean(capture.viewed);
 
     item.dataset.captureId = capture.id;
+    item.dataset.viewed = String(isViewed);
     video.src = capture.url;
     title.textContent = capture.filename;
     meta.textContent = `${formatDate(capture.createdAt)} - ${formatBytes(capture.size)}`;
@@ -268,6 +278,22 @@ capturesList.addEventListener("click", async (event) => {
     button.disabled = false;
   }
 });
+
+capturesList.addEventListener("play", async (event) => {
+  const video = event.target.closest("video");
+  if (!video) return;
+
+  const card = video.closest(".capture-card");
+  if (!card || card.dataset.viewed === "true") return;
+
+  card.dataset.viewed = "true";
+  try {
+    await setCaptureViewed(card.dataset.captureId);
+  } catch (error) {
+    card.dataset.viewed = "false";
+    console.error(error);
+  }
+}, true);
 
 function listenForCaptureEvents() {
   if (!window.EventSource) return;

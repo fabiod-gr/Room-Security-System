@@ -148,10 +148,18 @@ def capture_path(capture):
     return CAPTURE_DIR / safe_filename(capture.get("filename", ""))
 
 
+def capture_viewed(capture):
+    return bool(capture["viewed"]) if "viewed" in capture else True
+
+
 def list_captures():
     captures = read_json(MANIFEST_PATH, [])
     return [
-        {**capture, "favorite": bool(capture.get("favorite"))}
+        {
+            **capture,
+            "favorite": bool(capture.get("favorite")),
+            "viewed": capture_viewed(capture),
+        }
         for capture in captures
         if capture_path(capture).is_file()
     ]
@@ -174,7 +182,11 @@ def prune_old_captures():
             changed = True
             continue
 
-        kept.append({**capture, "favorite": bool(capture.get("favorite"))})
+        kept.append({
+            **capture,
+            "favorite": bool(capture.get("favorite")),
+            "viewed": capture_viewed(capture),
+        })
 
     if changed:
         write_json(MANIFEST_PATH, kept)
@@ -187,6 +199,16 @@ def update_capture_favorite(capture_id, favorite):
     for capture in captures:
         if capture.get("id") == capture_id:
             capture["favorite"] = bool(favorite)
+            write_json(MANIFEST_PATH, captures)
+            return capture
+    return None
+
+
+def update_capture_viewed(capture_id, viewed):
+    captures = prune_old_captures()
+    for capture in captures:
+        if capture.get("id") == capture_id:
+            capture["viewed"] = bool(viewed)
             write_json(MANIFEST_PATH, captures)
             return capture
     return None
@@ -252,6 +274,7 @@ def add_capture_record(filename, trigger):
         "createdAt": utc_now(),
         "size": target.stat().st_size,
         "favorite": False,
+        "viewed": False,
         "trigger": trigger,
     }
 
@@ -710,7 +733,13 @@ class SecurityHandler(SimpleHTTPRequestHandler):
                 return
 
             with state_lock:
-                capture = update_capture_favorite(capture_id, payload.get("favorite"))
+                if "favorite" in payload:
+                    capture = update_capture_favorite(capture_id, payload.get("favorite"))
+                elif "viewed" in payload:
+                    capture = update_capture_viewed(capture_id, payload.get("viewed"))
+                else:
+                    self.send_json({"error": "No supported capture update provided."}, status=400)
+                    return
 
             if not capture:
                 self.send_json({"error": "Capture not found."}, status=404)
