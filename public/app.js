@@ -160,6 +160,8 @@ function renderCaptures(captures) {
     const meta = item.querySelector("p");
     const favoriteButton = item.querySelector(".favorite-button");
     const downloadButton = item.querySelector(".download-button");
+    const deleteButton = item.querySelector(".delete-button");
+    const isFavorite = Boolean(capture.favorite);
 
     item.dataset.captureId = capture.id;
     video.src = capture.url;
@@ -167,9 +169,10 @@ function renderCaptures(captures) {
     meta.textContent = `${formatDate(capture.createdAt)} - ${formatBytes(capture.size)}`;
     downloadButton.href = capture.url;
     downloadButton.download = capture.filename;
-    favoriteButton.dataset.favorite = String(Boolean(capture.favorite));
-    favoriteButton.textContent = capture.favorite ? "Favorited" : "Favorite";
-    favoriteButton.setAttribute("aria-pressed", String(Boolean(capture.favorite)));
+    favoriteButton.dataset.favorite = String(isFavorite);
+    favoriteButton.textContent = isFavorite ? "Favorited" : "Favorite";
+    favoriteButton.setAttribute("aria-pressed", String(isFavorite));
+    deleteButton.hidden = isFavorite;
     capturesList.append(item);
   }
 }
@@ -246,9 +249,13 @@ capturesList.addEventListener("click", async (event) => {
   button.disabled = true;
   try {
     const capture = await setCaptureFavorite(card.dataset.captureId, favorite);
-    button.dataset.favorite = String(Boolean(capture.favorite));
-    button.textContent = capture.favorite ? "Favorited" : "Favorite";
-    button.setAttribute("aria-pressed", String(Boolean(capture.favorite)));
+    const isFavorite = Boolean(capture.favorite);
+    const deleteButton = card.querySelector(".delete-button");
+
+    button.dataset.favorite = String(isFavorite);
+    button.textContent = isFavorite ? "Favorited" : "Favorite";
+    button.setAttribute("aria-pressed", String(isFavorite));
+    deleteButton.hidden = isFavorite;
   } catch (error) {
     console.error(error);
   } finally {
