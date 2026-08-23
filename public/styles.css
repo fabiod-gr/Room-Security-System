@@ -466,6 +466,11 @@ h1 {
   background: rgba(255, 92, 92, 0.16);
 }
 
+.delete-button[data-confirming="true"] {
+  background: var(--danger);
+  color: white;
+}
+
 .empty-state {
   border: 1px dashed var(--line);
   border-radius: 8px;

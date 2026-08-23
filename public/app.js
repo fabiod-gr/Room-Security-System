@@ -279,6 +279,20 @@ capturesList.addEventListener("click", async (event) => {
   const deleteButton = event.target.closest(".delete-button");
   if (deleteButton) {
     const card = deleteButton.closest(".capture-card");
+    if (deleteButton.dataset.confirming !== "true") {
+      deleteButton.dataset.confirming = "true";
+      deleteButton.setAttribute("aria-label", "Confirm delete recording");
+      deleteButton.setAttribute("title", "Click again to delete");
+
+      window.setTimeout(() => {
+        if (!deleteButton.isConnected || deleteButton.disabled) return;
+        deleteButton.dataset.confirming = "false";
+        deleteButton.setAttribute("aria-label", "Delete recording");
+        deleteButton.setAttribute("title", "Delete recording");
+      }, 3000);
+      return;
+    }
+
     deleteButton.disabled = true;
 
     try {
