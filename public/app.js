@@ -4,6 +4,7 @@ const modeMetric = document.querySelector("#modeMetric");
 const motionMetric = document.querySelector("#motionMetric");
 const uptimeMetric = document.querySelector("#uptimeMetric");
 const recordingBadge = document.querySelector("#recordingBadge");
+const newClipsCount = document.querySelector("#newClipsCount");
 const refreshButton = document.querySelector("#refreshButton");
 const logoutButton = document.querySelector("#logoutButton");
 const captureFilters = document.querySelector(".capture-filters");
@@ -59,6 +60,11 @@ function updateCaptureFilterButtons() {
   for (const button of captureFilters.querySelectorAll("button")) {
     button.setAttribute("aria-selected", String(button.dataset.filter === activeCaptureFilter));
   }
+}
+
+function updateNewClipsCount() {
+  const count = allCaptures.filter((capture) => !capture.viewed).length;
+  newClipsCount.textContent = `(${count} new)`;
 }
 
 function renderUptime() {
@@ -177,6 +183,7 @@ async function deleteCapture(id) {
 function renderCaptures() {
   capturesList.replaceChildren();
   updateCaptureFilterButtons();
+  updateNewClipsCount();
 
   const captures = allCaptures.filter(captureMatchesFilter);
   const totalBytes = allCaptures.reduce((total, capture) => total + Number(capture.size || 0), 0);
