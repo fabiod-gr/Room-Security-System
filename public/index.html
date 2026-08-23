@@ -58,6 +58,13 @@
           <h2>Captured Videos</h2>
           <button id="refreshButton" type="button">Refresh</button>
         </div>
+        <div class="capture-filters" role="tablist" aria-label="Capture filters">
+          <button type="button" role="tab" aria-selected="true" data-filter="all">All</button>
+          <button type="button" role="tab" aria-selected="false" data-filter="new">New</button>
+          <button type="button" role="tab" aria-selected="false" data-filter="favorites">Favorites</button>
+          <button type="button" role="tab" aria-selected="false" data-filter="motion">Motion</button>
+          <button type="button" role="tab" aria-selected="false" data-filter="test">Test</button>
+        </div>
         <div id="capturesList" class="captures-list"></div>
         <div class="storage-summary">
           <span>Used Storage:</span>

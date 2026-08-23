@@ -6,6 +6,7 @@ const uptimeMetric = document.querySelector("#uptimeMetric");
 const recordingBadge = document.querySelector("#recordingBadge");
 const refreshButton = document.querySelector("#refreshButton");
 const logoutButton = document.querySelector("#logoutButton");
+const captureFilters = document.querySelector(".capture-filters");
 const capturesList = document.querySelector("#capturesList");
 const storageMetric = document.querySelector("#storageMetric");
 const captureTemplate = document.querySelector("#captureTemplate");
@@ -17,6 +18,8 @@ const testRecordingButton = document.querySelector("#testRecordingButton");
 let eventSource = null;
 let uptimeStartedAt = null;
 let uptimeBaseSeconds = 0;
+let allCaptures = [];
+let activeCaptureFilter = "all";
 
 function formatBytes(bytes) {
   if (bytes < 1024) return `${bytes} B`;
@@ -44,6 +47,20 @@ function formatCaptureType(trigger) {
   return trigger === "test" ? "Test" : "Motion";
 }
 
+function captureMatchesFilter(capture) {
+  if (activeCaptureFilter === "new") return !capture.viewed;
+  if (activeCaptureFilter === "favorites") return Boolean(capture.favorite);
+  if (activeCaptureFilter === "test") return capture.trigger === "test";
+  if (activeCaptureFilter === "motion") return capture.trigger !== "test";
+  return true;
+}
+
+function updateCaptureFilterButtons() {
+  for (const button of captureFilters.querySelectorAll("button")) {
+    button.setAttribute("aria-selected", String(button.dataset.filter === activeCaptureFilter));
+  }
+}
+
 function renderUptime() {
   if (!uptimeStartedAt) return;
   const elapsedSeconds = (Date.now() - uptimeStartedAt) / 1000;
@@ -62,7 +79,8 @@ async function api(path, options = {}) {
 async function loadStatus() {
   const data = await api("/api/status");
   renderStatus(data);
-  renderCaptures(data.captures);
+  allCaptures = data.captures;
+  renderCaptures();
   return data;
 }
 
@@ -156,15 +174,18 @@ async function deleteCapture(id) {
   });
 }
 
-function renderCaptures(captures) {
+function renderCaptures() {
   capturesList.replaceChildren();
-  const totalBytes = captures.reduce((total, capture) => total + Number(capture.size || 0), 0);
+  updateCaptureFilterButtons();
+
+  const captures = allCaptures.filter(captureMatchesFilter);
+  const totalBytes = allCaptures.reduce((total, capture) => total + Number(capture.size || 0), 0);
   storageMetric.textContent = formatBytes(totalBytes);
 
   if (!captures.length) {
     const empty = document.createElement("div");
     empty.className = "empty-state";
-    empty.textContent = "No captured videos yet.";
+    empty.textContent = allCaptures.length ? "No videos match this filter." : "No captured videos yet.";
     capturesList.append(empty);
     return;
   }
@@ -213,6 +234,14 @@ refreshButton.addEventListener("click", () => {
   loadStatus().catch(console.error);
 });
 
+captureFilters.addEventListener("click", (event) => {
+  const button = event.target.closest("button");
+  if (!button) return;
+
+  activeCaptureFilter = button.dataset.filter;
+  renderCaptures();
+});
+
 logoutButton.addEventListener("click", async () => {
   try {
     await logout();
@@ -247,12 +276,8 @@ capturesList.addEventListener("click", async (event) => {
 
     try {
       await deleteCapture(card.dataset.captureId);
-      card.remove();
-      if (!capturesList.children.length) {
-        renderCaptures([]);
-      } else {
-        await loadStatus();
-      }
+      allCaptures = allCaptures.filter((capture) => capture.id !== card.dataset.captureId);
+      renderCaptures();
     } catch (error) {
       deleteButton.disabled = false;
       console.error(error);
@@ -270,12 +295,18 @@ capturesList.addEventListener("click", async (event) => {
   try {
     const capture = await setCaptureFavorite(card.dataset.captureId, favorite);
     const isFavorite = Boolean(capture.favorite);
-    const deleteButton = card.querySelector(".delete-button");
+    allCaptures = allCaptures.map((item) => item.id === capture.id ? capture : item);
 
-    button.dataset.favorite = String(isFavorite);
-    button.textContent = isFavorite ? "Favorited" : "Favorite";
-    button.setAttribute("aria-pressed", String(isFavorite));
-    deleteButton.hidden = isFavorite;
+    if (activeCaptureFilter === "favorites" && !isFavorite) {
+      renderCaptures();
+    } else {
+      const deleteButton = card.querySelector(".delete-button");
+
+      button.dataset.favorite = String(isFavorite);
+      button.textContent = isFavorite ? "Favorited" : "Favorite";
+      button.setAttribute("aria-pressed", String(isFavorite));
+      deleteButton.hidden = isFavorite;
+    }
   } catch (error) {
     console.error(error);
   } finally {
@@ -292,7 +323,11 @@ capturesList.addEventListener("play", async (event) => {
 
   card.dataset.viewed = "true";
   try {
-    await setCaptureViewed(card.dataset.captureId);
+    const capture = await setCaptureViewed(card.dataset.captureId);
+    allCaptures = allCaptures.map((item) => item.id === capture.id ? capture : item);
+    if (activeCaptureFilter === "new") {
+      renderCaptures();
+    }
   } catch (error) {
     card.dataset.viewed = "false";
     console.error(error);
