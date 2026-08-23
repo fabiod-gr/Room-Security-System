@@ -40,6 +40,10 @@ function formatUptime(seconds) {
   return `${days}d ${hours}h ${minutes}m`;
 }
 
+function formatCaptureType(trigger) {
+  return trigger === "test" ? "Test" : "Motion";
+}
+
 function renderUptime() {
   if (!uptimeStartedAt) return;
   const elapsedSeconds = (Date.now() - uptimeStartedAt) / 1000;
@@ -180,7 +184,7 @@ function renderCaptures(captures) {
     item.dataset.viewed = String(isViewed);
     video.src = capture.url;
     title.textContent = capture.filename;
-    meta.textContent = `${formatDate(capture.createdAt)} - ${formatBytes(capture.size)}`;
+    meta.textContent = `${formatDate(capture.createdAt)} - ${formatBytes(capture.size)} - Type: ${formatCaptureType(capture.trigger)}`;
     downloadButton.href = capture.url;
     downloadButton.download = capture.filename;
     favoriteButton.dataset.favorite = String(isFavorite);
