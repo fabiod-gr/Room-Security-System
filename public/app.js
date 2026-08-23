@@ -7,6 +7,7 @@ const recordingBadge = document.querySelector("#recordingBadge");
 const refreshButton = document.querySelector("#refreshButton");
 const logoutButton = document.querySelector("#logoutButton");
 const capturesList = document.querySelector("#capturesList");
+const storageMetric = document.querySelector("#storageMetric");
 const captureTemplate = document.querySelector("#captureTemplate");
 const systemLight = document.querySelector("#systemLight");
 const systemSummary = document.querySelector("#systemSummary");
@@ -145,6 +146,9 @@ async function deleteCapture(id) {
 
 function renderCaptures(captures) {
   capturesList.replaceChildren();
+  const totalBytes = captures.reduce((total, capture) => total + Number(capture.size || 0), 0);
+  storageMetric.textContent = formatBytes(totalBytes);
+
   if (!captures.length) {
     const empty = document.createElement("div");
     empty.className = "empty-state";
@@ -232,6 +236,8 @@ capturesList.addEventListener("click", async (event) => {
       card.remove();
       if (!capturesList.children.length) {
         renderCaptures([]);
+      } else {
+        await loadStatus();
       }
     } catch (error) {
       deleteButton.disabled = false;
