@@ -230,6 +230,19 @@ def is_armed():
     return bool(read_json(STATE_PATH, {"armed": False}).get("armed"))
 
 
+def save_armed_state(armed):
+    state = read_json(STATE_PATH, {"armed": False})
+    state["armed"] = bool(armed)
+    write_json(STATE_PATH, state)
+    return state
+
+
+def save_last_motion_at(value):
+    state = read_json(STATE_PATH, {"armed": False})
+    state["lastMotionAt"] = value
+    write_json(STATE_PATH, state)
+
+
 def add_capture_record(filename, trigger):
     target = CAPTURE_DIR / filename
     record = {
@@ -415,6 +428,8 @@ def handle_motion_detected():
     global last_motion_at
 
     last_motion_at = utc_now()
+    with state_lock:
+        save_last_motion_at(last_motion_at)
     if is_armed():
         record_from_pi_camera("motion")
 
@@ -558,7 +573,7 @@ class SecurityHandler(SimpleHTTPRequestHandler):
                     "recordingTrigger": current_recording_trigger,
                     "recordingError": recording_error,
                     "lastRecordingFinishedAt": recording_finished_at,
-                    "lastMotionAt": last_motion_at,
+                    "lastMotionAt": state.get("lastMotionAt") or last_motion_at,
                     "sensor": motion_sensor_status,
                     "captureSeconds": CAPTURE_SECONDS,
                     "videoDevice": VIDEO_DEVICE,
@@ -644,8 +659,7 @@ class SecurityHandler(SimpleHTTPRequestHandler):
                 return
 
             with state_lock:
-                state = {"armed": bool(payload.get("armed"))}
-                write_json(STATE_PATH, state)
+                state = save_armed_state(payload.get("armed"))
             self.send_json(state)
             return
 
