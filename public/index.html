@@ -56,7 +56,10 @@
 
         <div class="events-header">
           <h2>Captured Videos <span id="newClipsCount">(0 new)</span></h2>
-          <button id="refreshButton" type="button">Refresh</button>
+          <div class="events-actions">
+            <button id="selectModeButton" type="button">Select</button>
+            <button id="refreshButton" type="button">Refresh</button>
+          </div>
         </div>
         <div class="capture-filters" role="tablist" aria-label="Capture filters">
           <button type="button" role="tab" aria-selected="true" data-filter="all">All</button>
@@ -64,6 +67,13 @@
           <button type="button" role="tab" aria-selected="false" data-filter="favorites">Favorites</button>
           <button type="button" role="tab" aria-selected="false" data-filter="motion">Motion</button>
           <button type="button" role="tab" aria-selected="false" data-filter="test">Test</button>
+        </div>
+        <div class="bulk-actions" hidden>
+          <button id="selectAllButton" type="button">Select All</button>
+          <button id="selectVisibleButton" type="button">Select Visible</button>
+          <span id="selectionCount">0 selected</span>
+          <button id="downloadSelectedButton" type="button" disabled>Download Selected</button>
+          <button id="deleteSelectedButton" type="button" disabled>Delete Selected</button>
         </div>
         <div id="capturesList" class="captures-list"></div>
         <div class="storage-summary">
@@ -75,6 +85,9 @@
 
     <template id="captureTemplate">
       <article class="capture-card">
+        <label class="capture-select">
+          <input type="checkbox" aria-label="Select recording">
+        </label>
         <video controls preload="metadata"></video>
         <div>
           <h3></h3>

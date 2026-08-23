@@ -3,6 +3,7 @@ from pathlib import Path
 from http import cookies
 from urllib.parse import unquote, urlparse
 import hmac
+import io
 import json
 import mimetypes
 import os
@@ -12,6 +13,7 @@ import secrets
 import subprocess
 import threading
 import time
+import zipfile
 from datetime import datetime, timedelta, timezone
 
 
@@ -214,22 +216,60 @@ def update_capture_viewed(capture_id, viewed):
     return None
 
 
-def delete_capture(capture_id):
+def delete_captures(capture_ids):
+    selected_ids = {str(capture_id) for capture_id in capture_ids}
     captures = prune_old_captures()
     kept = []
-    deleted = None
+    deleted = []
+    skipped = []
 
     for capture in captures:
-        if capture.get("id") == capture_id:
-            deleted = capture
-            capture_path(capture).unlink(missing_ok=True)
+        capture_id = capture.get("id")
+        if capture_id not in selected_ids:
+            kept.append(capture)
             continue
-        kept.append(capture)
+
+        if capture.get("favorite"):
+            skipped.append(capture_id)
+            kept.append(capture)
+            continue
+
+        deleted.append(capture_id)
+        capture_path(capture).unlink(missing_ok=True)
 
     if deleted:
         write_json(MANIFEST_PATH, kept)
 
-    return deleted
+    return {"deleted": deleted, "skipped": skipped}
+
+
+def delete_capture(capture_id):
+    result = delete_captures([capture_id])
+    return capture_id if capture_id in result["deleted"] else None
+
+
+def create_capture_zip(capture_ids):
+    selected_ids = [str(capture_id) for capture_id in capture_ids]
+    captures_by_id = {capture.get("id"): capture for capture in list_captures()}
+    archive = io.BytesIO()
+    added = 0
+
+    with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as zip_file:
+        for capture_id in selected_ids:
+            capture = captures_by_id.get(capture_id)
+            if not capture:
+                continue
+
+            target = capture_path(capture)
+            if target.is_file():
+                zip_file.write(target, arcname=safe_filename(capture.get("filename", target.name)))
+                added += 1
+
+    if not added:
+        return None
+
+    archive.seek(0)
+    return archive.getvalue()
 
 
 def safe_filename(name):
@@ -686,6 +726,28 @@ class SecurityHandler(SimpleHTTPRequestHandler):
             self.send_json(state)
             return
 
+        if parsed.path == "/api/captures/download":
+            try:
+                payload = self.read_request_json()
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                self.send_json({"error": "Invalid JSON body."}, status=400)
+                return
+
+            with state_lock:
+                archive = create_capture_zip(payload.get("ids", []))
+
+            if not archive:
+                self.send_json({"error": "No matching captures found."}, status=404)
+                return
+
+            self.send_response(200)
+            self.send_header("Content-Type", "application/zip")
+            self.send_header("Content-Disposition", 'attachment; filename="selected-captures.zip"')
+            self.send_header("Content-Length", str(len(archive)))
+            self.end_headers()
+            self.wfile.write(archive)
+            return
+
         if parsed.path == "/api/captures":
             length = int(self.headers.get("Content-Length", "0"))
             if length <= 0:
@@ -754,6 +816,19 @@ class SecurityHandler(SimpleHTTPRequestHandler):
         parsed = urlparse(self.path)
         if not self.is_authenticated():
             self.send_auth_required()
+            return
+
+        if parsed.path == "/api/captures/bulk":
+            try:
+                payload = self.read_request_json()
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                self.send_json({"error": "Invalid JSON body."}, status=400)
+                return
+
+            with state_lock:
+                result = delete_captures(payload.get("ids", []))
+
+            self.send_json(result)
             return
 
         if parsed.path.startswith("/api/captures/"):

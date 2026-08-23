@@ -8,6 +8,13 @@ const newClipsCount = document.querySelector("#newClipsCount");
 const refreshButton = document.querySelector("#refreshButton");
 const logoutButton = document.querySelector("#logoutButton");
 const captureFilters = document.querySelector(".capture-filters");
+const selectModeButton = document.querySelector("#selectModeButton");
+const bulkActions = document.querySelector(".bulk-actions");
+const selectAllButton = document.querySelector("#selectAllButton");
+const selectVisibleButton = document.querySelector("#selectVisibleButton");
+const selectionCount = document.querySelector("#selectionCount");
+const downloadSelectedButton = document.querySelector("#downloadSelectedButton");
+const deleteSelectedButton = document.querySelector("#deleteSelectedButton");
 const capturesList = document.querySelector("#capturesList");
 const storageMetric = document.querySelector("#storageMetric");
 const captureTemplate = document.querySelector("#captureTemplate");
@@ -21,6 +28,8 @@ let uptimeStartedAt = null;
 let uptimeBaseSeconds = 0;
 let allCaptures = [];
 let activeCaptureFilter = "all";
+let selectedCaptureIds = new Set();
+let selectionMode = false;
 
 function formatBytes(bytes) {
   if (bytes < 1024) return `${bytes} B`;
@@ -67,6 +76,44 @@ function updateNewClipsCount() {
   newClipsCount.textContent = `(${count} new)`;
 }
 
+function getVisibleCaptures() {
+  return allCaptures.filter(captureMatchesFilter);
+}
+
+function getSelectedCaptures() {
+  return allCaptures.filter((capture) => selectedCaptureIds.has(capture.id));
+}
+
+function pruneSelectedCaptureIds() {
+  const captureIds = new Set(allCaptures.map((capture) => capture.id));
+  selectedCaptureIds = new Set([...selectedCaptureIds].filter((id) => captureIds.has(id)));
+}
+
+function updateBulkActions() {
+  bulkActions.hidden = !selectionMode;
+  selectModeButton.textContent = selectionMode ? "Done" : "Select";
+
+  if (!selectionMode) return;
+
+  const visibleCaptures = getVisibleCaptures();
+  const selectedCaptures = getSelectedCaptures();
+  const selectedCount = selectedCaptures.length;
+  const selectedDeletableCount = selectedCaptures.filter((capture) => !capture.favorite).length;
+  const allSelected = allCaptures.length > 0 && allCaptures.every((capture) => selectedCaptureIds.has(capture.id));
+  const allVisibleSelected = visibleCaptures.length > 0 && visibleCaptures.every((capture) => selectedCaptureIds.has(capture.id));
+
+  selectionCount.textContent = `${selectedCount} selected`;
+  selectAllButton.disabled = allCaptures.length === 0;
+  selectAllButton.textContent = allSelected ? "Clear All" : "Select All";
+  selectVisibleButton.disabled = visibleCaptures.length === 0;
+  selectVisibleButton.textContent = allVisibleSelected ? "Clear Visible" : "Select Visible";
+  downloadSelectedButton.disabled = selectedCount === 0;
+  deleteSelectedButton.disabled = selectedDeletableCount === 0;
+  deleteSelectedButton.textContent = "Delete Selected";
+  deleteSelectedButton.dataset.confirming = "false";
+  deleteSelectedButton.title = selectedDeletableCount === selectedCount ? "" : "Favorited clips will be kept";
+}
+
 function renderUptime() {
   if (!uptimeStartedAt) return;
   const elapsedSeconds = (Date.now() - uptimeStartedAt) / 1000;
@@ -86,6 +133,7 @@ async function loadStatus() {
   const data = await api("/api/status");
   renderStatus(data);
   allCaptures = data.captures;
+  pruneSelectedCaptureIds();
   renderCaptures();
   return data;
 }
@@ -174,6 +222,27 @@ async function setCaptureViewed(id) {
   });
 }
 
+async function downloadCaptures(ids) {
+  const response = await fetch("/api/captures/download", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ids }),
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(text || response.statusText);
+  }
+  return response.blob();
+}
+
+async function deleteCaptures(ids) {
+  return api("/api/captures/bulk", {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ids }),
+  });
+}
+
 async function deleteCapture(id) {
   return api(`/api/captures/${encodeURIComponent(id)}`, {
     method: "DELETE",
@@ -194,11 +263,13 @@ function renderCaptures() {
     empty.className = "empty-state";
     empty.textContent = allCaptures.length ? "No videos match this filter." : "No captured videos yet.";
     capturesList.append(empty);
+    updateBulkActions();
     return;
   }
 
   for (const capture of captures) {
     const item = captureTemplate.content.firstElementChild.cloneNode(true);
+    const selectInput = item.querySelector(".capture-select input");
     const video = item.querySelector("video");
     const title = item.querySelector("h3");
     const meta = item.querySelector("p");
@@ -210,6 +281,9 @@ function renderCaptures() {
 
     item.dataset.captureId = capture.id;
     item.dataset.viewed = String(isViewed);
+    item.dataset.selecting = String(selectionMode);
+    selectInput.closest(".capture-select").hidden = !selectionMode;
+    selectInput.checked = selectedCaptureIds.has(capture.id);
     video.src = capture.url;
     title.textContent = capture.filename;
     meta.textContent = `${formatDate(capture.createdAt)} - ${formatBytes(capture.size)} - Type: ${formatCaptureType(capture.trigger)}`;
@@ -221,6 +295,7 @@ function renderCaptures() {
     deleteButton.hidden = isFavorite;
     capturesList.append(item);
   }
+  updateBulkActions();
 }
 
 armedToggle.addEventListener("change", async () => {
@@ -247,6 +322,90 @@ captureFilters.addEventListener("click", (event) => {
 
   activeCaptureFilter = button.dataset.filter;
   renderCaptures();
+});
+
+selectModeButton.addEventListener("click", () => {
+  selectionMode = !selectionMode;
+  if (!selectionMode) {
+    selectedCaptureIds.clear();
+  }
+  renderCaptures();
+});
+
+selectAllButton.addEventListener("click", () => {
+  const allSelected = allCaptures.length > 0 && allCaptures.every((capture) => selectedCaptureIds.has(capture.id));
+
+  if (allSelected) {
+    selectedCaptureIds.clear();
+  } else {
+    selectedCaptureIds = new Set(allCaptures.map((capture) => capture.id));
+  }
+  renderCaptures();
+});
+
+selectVisibleButton.addEventListener("click", () => {
+  const visibleCaptures = getVisibleCaptures();
+  const allVisibleSelected = visibleCaptures.length > 0 && visibleCaptures.every((capture) => selectedCaptureIds.has(capture.id));
+
+  for (const capture of visibleCaptures) {
+    if (allVisibleSelected) {
+      selectedCaptureIds.delete(capture.id);
+    } else {
+      selectedCaptureIds.add(capture.id);
+    }
+  }
+  renderCaptures();
+});
+
+downloadSelectedButton.addEventListener("click", async () => {
+  const ids = getSelectedCaptures().map((capture) => capture.id);
+  if (!ids.length) return;
+
+  downloadSelectedButton.disabled = true;
+  try {
+    const blob = await downloadCaptures(ids);
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "selected-captures.zip";
+    document.body.append(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  } catch (error) {
+    console.error(error);
+  } finally {
+    updateBulkActions();
+  }
+});
+
+deleteSelectedButton.addEventListener("click", async () => {
+  const ids = getSelectedCaptures()
+    .filter((capture) => !capture.favorite)
+    .map((capture) => capture.id);
+  if (!ids.length) return;
+
+  if (deleteSelectedButton.dataset.confirming !== "true") {
+    deleteSelectedButton.dataset.confirming = "true";
+    deleteSelectedButton.textContent = "Confirm Delete";
+    window.setTimeout(() => {
+      if (!deleteSelectedButton.isConnected || deleteSelectedButton.disabled) return;
+      updateBulkActions();
+    }, 3000);
+    return;
+  }
+
+  deleteSelectedButton.disabled = true;
+  try {
+    const result = await deleteCaptures(ids);
+    const deletedIds = new Set(result.deleted || []);
+    allCaptures = allCaptures.filter((capture) => !deletedIds.has(capture.id));
+    selectedCaptureIds = new Set([...selectedCaptureIds].filter((id) => !deletedIds.has(id)));
+    renderCaptures();
+  } catch (error) {
+    console.error(error);
+    updateBulkActions();
+  }
 });
 
 logoutButton.addEventListener("click", async () => {
@@ -297,6 +456,7 @@ capturesList.addEventListener("click", async (event) => {
 
     try {
       await deleteCapture(card.dataset.captureId);
+      selectedCaptureIds.delete(card.dataset.captureId);
       allCaptures = allCaptures.filter((capture) => capture.id !== card.dataset.captureId);
       renderCaptures();
     } catch (error) {
@@ -333,6 +493,19 @@ capturesList.addEventListener("click", async (event) => {
   } finally {
     button.disabled = false;
   }
+});
+
+capturesList.addEventListener("change", (event) => {
+  const checkbox = event.target.closest(".capture-select input");
+  if (!checkbox) return;
+
+  const card = checkbox.closest(".capture-card");
+  if (checkbox.checked) {
+    selectedCaptureIds.add(card.dataset.captureId);
+  } else {
+    selectedCaptureIds.delete(card.dataset.captureId);
+  }
+  updateBulkActions();
 });
 
 capturesList.addEventListener("play", async (event) => {
