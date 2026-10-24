@@ -81,6 +81,7 @@ SECURITY_VIDEO_DEVICE=/dev/video0
 SECURITY_AUDIO_DEVICE=plughw:2,0
 SECURITY_PIR_GPIO=17
 SECURITY_CAPTURE_SECONDS=15
+SECURITY_VIDEO_WARMUP_SECONDS=0.5
 SECURITY_VIDEO_SIZE=640x480
 SECURITY_FRAMERATE=15
 SECURITY_RECORD_COOLDOWN_SECONDS=10
@@ -89,6 +90,8 @@ SECURITY_DASHBOARD_USERNAME=admin
 SECURITY_DASHBOARD_PASSWORD=change-this-password
 SECURITY_SESSION_MAX_AGE_SECONDS=86400
 ```
+
+`SECURITY_VIDEO_WARMUP_SECONDS` trims the webcam's initial exposure-settling frames from each recording. Increase it slightly if clips still begin black, or set it to `0` to disable the trim. The saved clip still uses the full `SECURITY_CAPTURE_SECONDS` duration.
 
 Before using the dashboard remotely, change:
 

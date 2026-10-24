@@ -48,6 +48,7 @@ load_env_file(ROOT / ".env")
 RETENTION_DAYS = 15
 PIR_GPIO_PIN = int(os.environ.get("SECURITY_PIR_GPIO", "17"))
 CAPTURE_SECONDS = int(os.environ.get("SECURITY_CAPTURE_SECONDS", "15"))
+VIDEO_WARMUP_SECONDS = max(0.0, float(os.environ.get("SECURITY_VIDEO_WARMUP_SECONDS", "0.5")))
 RECORD_COOLDOWN_SECONDS = int(os.environ.get("SECURITY_RECORD_COOLDOWN_SECONDS", "10"))
 VIDEO_DEVICE = os.environ.get("SECURITY_VIDEO_DEVICE", "/dev/video0")
 AUDIO_DEVICE = os.environ.get("SECURITY_AUDIO_DEVICE", "default")
@@ -387,6 +388,12 @@ def build_recording_command(target):
             ]
         )
 
+    if VIDEO_WARMUP_SECONDS > 0:
+        warmup = str(VIDEO_WARMUP_SECONDS)
+        command.extend(["-vf", f"setpts=PTS-STARTPTS,trim=start={warmup},setpts=PTS-STARTPTS"])
+        if audio_enabled:
+            command.extend(["-af", f"asetpts=PTS-STARTPTS,atrim=start={warmup},asetpts=PTS-STARTPTS"])
+
     command.extend(
         [
         "-t",
@@ -457,7 +464,7 @@ def record_from_pi_camera(trigger="motion"):
                 build_recording_command(target),
                 capture_output=True,
                 text=True,
-                timeout=CAPTURE_SECONDS + 15,
+                timeout=CAPTURE_SECONDS + VIDEO_WARMUP_SECONDS + 15,
             )
             if result.returncode != 0:
                 target.unlink(missing_ok=True)
