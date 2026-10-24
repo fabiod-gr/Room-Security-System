@@ -32,6 +32,7 @@ let selectedCaptureIds = new Set();
 let selectionMode = false;
 let openCaptureDates = new Set();
 let captureGroupsHaveRendered = false;
+let visibleNewCaptureIds = null;
 
 function formatBytes(bytes) {
   if (bytes < 1024) return `${bytes} B`;
@@ -100,7 +101,9 @@ function formatCaptureType(trigger) {
 }
 
 function captureMatchesFilter(capture) {
-  if (activeCaptureFilter === "new") return !capture.viewed;
+  if (activeCaptureFilter === "new") {
+    return visibleNewCaptureIds ? visibleNewCaptureIds.has(capture.id) : !capture.viewed;
+  }
   if (activeCaptureFilter === "favorites") return Boolean(capture.favorite);
   if (activeCaptureFilter === "test") return capture.trigger === "test";
   if (activeCaptureFilter === "motion") return capture.trigger !== "test";
@@ -175,6 +178,11 @@ async function loadStatus() {
   const data = await api("/api/status");
   renderStatus(data);
   allCaptures = data.captures;
+  if (activeCaptureFilter === "new") {
+    visibleNewCaptureIds = new Set(
+      allCaptures.filter((capture) => !capture.viewed).map((capture) => capture.id),
+    );
+  }
   pruneSelectedCaptureIds();
   renderCaptures();
   return data;
@@ -338,45 +346,51 @@ function renderCaptures() {
     return;
   }
 
-  const groups = groupCapturesByDate(captures);
-  const visibleDateKeys = new Set(groups.map((group) => group.key));
-  openCaptureDates = new Set([...openCaptureDates].filter((key) => visibleDateKeys.has(key)));
+  if (activeCaptureFilter === "date") {
+    const groups = groupCapturesByDate(captures);
+    const visibleDateKeys = new Set(groups.map((group) => group.key));
+    openCaptureDates = new Set([...openCaptureDates].filter((key) => visibleDateKeys.has(key)));
 
-  if (!captureGroupsHaveRendered && groups.length) {
-    openCaptureDates.add(groups[0].key);
-  }
-  captureGroupsHaveRendered = true;
-
-  for (const group of groups) {
-    const dateSection = document.createElement("details");
-    const summary = document.createElement("summary");
-    const dateLabel = document.createElement("span");
-    const countLabel = document.createElement("span");
-    const groupList = document.createElement("div");
-
-    dateSection.className = "capture-date-group";
-    dateSection.dataset.captureDate = group.key;
-    dateSection.open = openCaptureDates.has(group.key);
-    summary.className = "capture-date-summary";
-    dateLabel.textContent = group.label;
-    countLabel.className = "capture-date-count";
-    countLabel.textContent = `${group.captures.length} ${group.captures.length === 1 ? "recording" : "recordings"}`;
-    groupList.className = "capture-date-list";
-
-    for (const capture of group.captures) {
-      groupList.append(createCaptureCard(capture));
+    if (!captureGroupsHaveRendered && groups.length) {
+      openCaptureDates.add(groups[0].key);
     }
+    captureGroupsHaveRendered = true;
 
-    summary.append(dateLabel, countLabel);
-    dateSection.append(summary, groupList);
-    dateSection.addEventListener("toggle", () => {
-      if (dateSection.open) {
-        openCaptureDates.add(group.key);
-      } else {
-        openCaptureDates.delete(group.key);
+    for (const group of groups) {
+      const dateSection = document.createElement("details");
+      const summary = document.createElement("summary");
+      const dateLabel = document.createElement("span");
+      const countLabel = document.createElement("span");
+      const groupList = document.createElement("div");
+
+      dateSection.className = "capture-date-group";
+      dateSection.dataset.captureDate = group.key;
+      dateSection.open = openCaptureDates.has(group.key);
+      summary.className = "capture-date-summary";
+      dateLabel.textContent = group.label;
+      countLabel.className = "capture-date-count";
+      countLabel.textContent = `${group.captures.length} ${group.captures.length === 1 ? "recording" : "recordings"}`;
+      groupList.className = "capture-date-list";
+
+      for (const capture of group.captures) {
+        groupList.append(createCaptureCard(capture));
       }
-    });
-    capturesList.append(dateSection);
+
+      summary.append(dateLabel, countLabel);
+      dateSection.append(summary, groupList);
+      dateSection.addEventListener("toggle", () => {
+        if (dateSection.open) {
+          openCaptureDates.add(group.key);
+        } else {
+          openCaptureDates.delete(group.key);
+        }
+      });
+      capturesList.append(dateSection);
+    }
+  } else {
+    for (const capture of captures) {
+      capturesList.append(createCaptureCard(capture));
+    }
   }
   updateBulkActions();
 }
@@ -403,7 +417,13 @@ captureFilters.addEventListener("click", (event) => {
   const button = event.target.closest("button");
   if (!button) return;
 
-  activeCaptureFilter = button.dataset.filter;
+  const nextFilter = button.dataset.filter;
+  if (nextFilter === activeCaptureFilter) return;
+
+  activeCaptureFilter = nextFilter;
+  visibleNewCaptureIds = nextFilter === "new"
+    ? new Set(allCaptures.filter((capture) => !capture.viewed).map((capture) => capture.id))
+    : null;
   renderCaptures();
 });
 
@@ -598,15 +618,28 @@ capturesList.addEventListener("play", async (event) => {
   const card = video.closest(".capture-card");
   if (!card || card.dataset.viewed === "true") return;
 
+  const captureId = card.dataset.captureId;
   card.dataset.viewed = "true";
+  allCaptures = allCaptures.map((capture) => (
+    capture.id === captureId ? { ...capture, viewed: true } : capture
+  ));
+  updateNewClipsCount();
+
   try {
-    const capture = await setCaptureViewed(card.dataset.captureId);
+    const capture = await setCaptureViewed(captureId);
     allCaptures = allCaptures.map((item) => item.id === capture.id ? capture : item);
-    if (activeCaptureFilter === "new") {
-      renderCaptures();
-    }
+    updateNewClipsCount();
   } catch (error) {
     card.dataset.viewed = "false";
+    allCaptures = allCaptures.map((capture) => (
+      capture.id === captureId ? { ...capture, viewed: false } : capture
+    ));
+    if (activeCaptureFilter === "new") {
+      visibleNewCaptureIds.add(captureId);
+      renderCaptures();
+    } else {
+      updateNewClipsCount();
+    }
     console.error(error);
   }
 }, true);
