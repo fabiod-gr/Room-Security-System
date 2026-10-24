@@ -37,19 +37,21 @@
           <div id="recordingBadge" class="recording-badge" hidden>Recording</div>
         </div>
 
-        <section class="health-panel" aria-labelledby="healthHeading">
-          <div class="health-header">
-            <div class="health-heading">
-              <img class="health-mascot" src="system-health-mascot.png" alt="Chainsaw dog illustration">
-              <p class="eyebrow">System Health</p>
-              <h2 id="healthHeading">Device status</h2>
+        <div class="health-section">
+          <img class="health-mascot" src="system-health-mascot.png" alt="Chainsaw dog illustration">
+          <section class="health-panel" aria-labelledby="healthHeading">
+            <div class="health-header">
+              <div>
+                <p class="eyebrow">System Health</p>
+                <h2 id="healthHeading">Device status</h2>
+              </div>
+              <div id="overallHealth" class="overall-health" data-health="warning" aria-live="polite">
+                Checking system
+              </div>
             </div>
-            <div id="overallHealth" class="overall-health" data-health="warning" aria-live="polite">
-              Checking system
-            </div>
-          </div>
-          <div id="healthGrid" class="health-grid" aria-live="polite"></div>
-        </section>
+            <div id="healthGrid" class="health-grid" aria-live="polite"></div>
+          </section>
+        </div>
       </section>
 
       <aside class="side-panel" aria-label="Security events">
