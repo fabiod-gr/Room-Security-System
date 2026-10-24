@@ -260,6 +260,19 @@ h1 {
   font-size: 1.2rem;
 }
 
+.health-heading {
+  display: flex;
+  align-items: flex-start;
+  flex-direction: column;
+}
+
+.health-mascot {
+  width: auto;
+  height: clamp(100px, 11vw, 140px);
+  margin-bottom: 10px;
+  object-fit: contain;
+}
+
 .overall-health {
   display: flex;
   align-items: center;
