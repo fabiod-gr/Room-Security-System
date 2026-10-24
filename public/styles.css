@@ -266,6 +266,7 @@ h1 {
 
 .health-mascot {
   display: block;
+  max-width: 100%;
   width: auto;
   height: clamp(100px, 11vw, 140px);
   margin: 0 0 -1px 16px;
@@ -706,10 +707,13 @@ h1 {
 }
 
 .login-shell {
-  width: min(100%, 420px);
+  width: 100%;
+  min-width: 0;
+  max-width: 420px;
 }
 
 .login-panel {
+  min-width: 0;
   display: grid;
   gap: 16px;
   border: 1px solid var(--line);
@@ -724,6 +728,7 @@ h1 {
 }
 
 .login-field {
+  min-width: 0;
   display: grid;
   gap: 8px;
   color: var(--muted);
@@ -731,6 +736,8 @@ h1 {
 }
 
 .login-field input {
+  width: 100%;
+  min-width: 0;
   min-height: 44px;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -743,7 +750,7 @@ h1 {
   color: var(--danger);
 }
 
-@media (max-width: 1100px) {
+@media (max-width: 1280px) {
   .app-shell {
     grid-template-columns: 1fr;
   }
@@ -755,7 +762,13 @@ h1 {
 
 @media (max-width: 540px) {
   .app-shell {
+    gap: 10px;
     padding: 10px;
+  }
+
+  .camera-panel,
+  .side-panel {
+    padding: 14px;
   }
 
   .topbar {
@@ -782,7 +795,8 @@ h1 {
   }
 
   .status-grid,
-  .capture-card {
+  .capture-card,
+  .capture-card[data-selecting="false"] {
     grid-template-columns: 1fr;
   }
 
@@ -790,6 +804,20 @@ h1 {
     grid-template-columns: 1fr;
     aspect-ratio: auto;
     min-height: 220px;
+    padding: 20px;
+  }
+
+  .events-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .events-actions {
+    width: 100%;
+  }
+
+  .events-actions button {
+    flex: 1;
   }
 
   .capture-actions {
@@ -803,6 +831,11 @@ h1 {
   .health-header {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .health-mascot {
+    height: 90px;
+    margin-left: 0;
   }
 
   .health-grid {
