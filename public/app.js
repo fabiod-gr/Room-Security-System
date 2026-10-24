@@ -30,6 +30,8 @@ let allCaptures = [];
 let activeCaptureFilter = "all";
 let selectedCaptureIds = new Set();
 let selectionMode = false;
+let openCaptureDates = new Set();
+let captureGroupsHaveRendered = false;
 
 function formatBytes(bytes) {
   if (bytes < 1024) return `${bytes} B`;
@@ -43,6 +45,46 @@ function formatDate(value) {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(new Date(value));
+}
+
+function getCaptureDateGroup(capture) {
+  const date = new Date(capture.createdAt);
+  if (Number.isNaN(date.getTime())) {
+    return { key: "unknown", label: "Unknown date", timestamp: -Infinity };
+  }
+
+  const key = [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0"),
+  ].join("-");
+
+  return {
+    key,
+    label: new Intl.DateTimeFormat(undefined, { dateStyle: "full" }).format(date),
+    timestamp: new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime(),
+  };
+}
+
+function groupCapturesByDate(captures) {
+  const groups = new Map();
+
+  for (const capture of captures) {
+    const dateGroup = getCaptureDateGroup(capture);
+    if (!groups.has(dateGroup.key)) {
+      groups.set(dateGroup.key, { ...dateGroup, captures: [] });
+    }
+    groups.get(dateGroup.key).captures.push(capture);
+  }
+
+  return [...groups.values()]
+    .sort((a, b) => b.timestamp - a.timestamp)
+    .map((group) => ({
+      ...group,
+      captures: group.captures.sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      ),
+    }));
 }
 
 function formatUptime(seconds) {
@@ -249,6 +291,35 @@ async function deleteCapture(id) {
   });
 }
 
+function createCaptureCard(capture) {
+  const item = captureTemplate.content.firstElementChild.cloneNode(true);
+  const selectInput = item.querySelector(".capture-select input");
+  const video = item.querySelector("video");
+  const title = item.querySelector("h3");
+  const meta = item.querySelector("p");
+  const favoriteButton = item.querySelector(".favorite-button");
+  const downloadButton = item.querySelector(".download-button");
+  const deleteButton = item.querySelector(".delete-button");
+  const isFavorite = Boolean(capture.favorite);
+  const isViewed = Boolean(capture.viewed);
+
+  item.dataset.captureId = capture.id;
+  item.dataset.viewed = String(isViewed);
+  item.dataset.selecting = String(selectionMode);
+  selectInput.closest(".capture-select").hidden = !selectionMode;
+  selectInput.checked = selectedCaptureIds.has(capture.id);
+  video.src = capture.url;
+  title.textContent = capture.filename;
+  meta.textContent = `${formatDate(capture.createdAt)} - ${formatBytes(capture.size)} - Type: ${formatCaptureType(capture.trigger)}`;
+  downloadButton.href = capture.url;
+  downloadButton.download = capture.filename;
+  favoriteButton.dataset.favorite = String(isFavorite);
+  favoriteButton.textContent = isFavorite ? "Favorited" : "Favorite";
+  favoriteButton.setAttribute("aria-pressed", String(isFavorite));
+  deleteButton.hidden = isFavorite;
+  return item;
+}
+
 function renderCaptures() {
   capturesList.replaceChildren();
   updateCaptureFilterButtons();
@@ -267,33 +338,45 @@ function renderCaptures() {
     return;
   }
 
-  for (const capture of captures) {
-    const item = captureTemplate.content.firstElementChild.cloneNode(true);
-    const selectInput = item.querySelector(".capture-select input");
-    const video = item.querySelector("video");
-    const title = item.querySelector("h3");
-    const meta = item.querySelector("p");
-    const favoriteButton = item.querySelector(".favorite-button");
-    const downloadButton = item.querySelector(".download-button");
-    const deleteButton = item.querySelector(".delete-button");
-    const isFavorite = Boolean(capture.favorite);
-    const isViewed = Boolean(capture.viewed);
+  const groups = groupCapturesByDate(captures);
+  const visibleDateKeys = new Set(groups.map((group) => group.key));
+  openCaptureDates = new Set([...openCaptureDates].filter((key) => visibleDateKeys.has(key)));
 
-    item.dataset.captureId = capture.id;
-    item.dataset.viewed = String(isViewed);
-    item.dataset.selecting = String(selectionMode);
-    selectInput.closest(".capture-select").hidden = !selectionMode;
-    selectInput.checked = selectedCaptureIds.has(capture.id);
-    video.src = capture.url;
-    title.textContent = capture.filename;
-    meta.textContent = `${formatDate(capture.createdAt)} - ${formatBytes(capture.size)} - Type: ${formatCaptureType(capture.trigger)}`;
-    downloadButton.href = capture.url;
-    downloadButton.download = capture.filename;
-    favoriteButton.dataset.favorite = String(isFavorite);
-    favoriteButton.textContent = isFavorite ? "Favorited" : "Favorite";
-    favoriteButton.setAttribute("aria-pressed", String(isFavorite));
-    deleteButton.hidden = isFavorite;
-    capturesList.append(item);
+  if (!captureGroupsHaveRendered && groups.length) {
+    openCaptureDates.add(groups[0].key);
+  }
+  captureGroupsHaveRendered = true;
+
+  for (const group of groups) {
+    const dateSection = document.createElement("details");
+    const summary = document.createElement("summary");
+    const dateLabel = document.createElement("span");
+    const countLabel = document.createElement("span");
+    const groupList = document.createElement("div");
+
+    dateSection.className = "capture-date-group";
+    dateSection.dataset.captureDate = group.key;
+    dateSection.open = openCaptureDates.has(group.key);
+    summary.className = "capture-date-summary";
+    dateLabel.textContent = group.label;
+    countLabel.className = "capture-date-count";
+    countLabel.textContent = `${group.captures.length} ${group.captures.length === 1 ? "recording" : "recordings"}`;
+    groupList.className = "capture-date-list";
+
+    for (const capture of group.captures) {
+      groupList.append(createCaptureCard(capture));
+    }
+
+    summary.append(dateLabel, countLabel);
+    dateSection.append(summary, groupList);
+    dateSection.addEventListener("toggle", () => {
+      if (dateSection.open) {
+        openCaptureDates.add(group.key);
+      } else {
+        openCaptureDates.delete(group.key);
+      }
+    });
+    capturesList.append(dateSection);
   }
   updateBulkActions();
 }
