@@ -22,6 +22,8 @@ const systemLight = document.querySelector("#systemLight");
 const systemSummary = document.querySelector("#systemSummary");
 const systemDetail = document.querySelector("#systemDetail");
 const testRecordingButton = document.querySelector("#testRecordingButton");
+const overallHealth = document.querySelector("#overallHealth");
+const healthGrid = document.querySelector("#healthGrid");
 
 let eventSource = null;
 let uptimeStartedAt = null;
@@ -222,6 +224,7 @@ function renderStatus(data) {
   renderUptime();
   recordingBadge.hidden = !recording;
   testRecordingButton.disabled = recording;
+  renderHealth(data.health);
 
   systemLight.dataset.state = recording ? "recording" : armed && sensorReady ? "armed" : "idle";
 
@@ -254,6 +257,29 @@ function renderStatus(data) {
 
   systemSummary.textContent = "System unarmed";
   systemDetail.textContent = "";
+}
+
+function renderHealth(health) {
+  const status = health?.status || "warning";
+  overallHealth.dataset.health = status;
+  overallHealth.textContent = health?.label || "Health data unavailable";
+  healthGrid.replaceChildren();
+
+  for (const healthItem of health?.items || []) {
+    const item = document.createElement("article");
+    const label = document.createElement("span");
+    const value = document.createElement("strong");
+    const detail = document.createElement("small");
+
+    item.className = "health-item";
+    item.dataset.health = healthItem.status;
+    label.textContent = healthItem.label;
+    value.textContent = healthItem.value;
+    detail.textContent = healthItem.detail;
+    item.title = healthItem.detail;
+    item.append(label, value, detail);
+    healthGrid.append(item);
+  }
 }
 
 async function setCaptureFavorite(id, favorite) {

@@ -10,6 +10,9 @@
   --accent-strong: #1f8fd1;
   --danger: #ff5f7a;
   --warning: #8ccfff;
+  --health-good: #4ade80;
+  --health-warning: #ffd166;
+  --health-critical: #ff5f7a;
 }
 
 * {
@@ -234,6 +237,98 @@ h1 {
   background: var(--danger);
   color: white;
   font-weight: 800;
+}
+
+.health-panel {
+  display: grid;
+  gap: 14px;
+  margin-top: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 16px;
+  background: #060d17;
+}
+
+.health-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.health-header h2 {
+  font-size: 1.2rem;
+}
+
+.overall-health {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  padding: 8px 12px;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.overall-health::before {
+  content: "";
+  width: 9px;
+  height: 9px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 10px currentColor;
+}
+
+[data-health="good"] {
+  color: var(--health-good);
+}
+
+[data-health="warning"] {
+  color: var(--health-warning);
+}
+
+[data-health="critical"] {
+  color: var(--health-critical);
+}
+
+.health-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.health-item {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+  border: 1px solid var(--line);
+  border-top: 3px solid currentColor;
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--panel-strong);
+}
+
+.health-item span {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.health-item strong {
+  overflow-wrap: anywhere;
+  color: currentColor;
+  font-size: 0.96rem;
+}
+
+.health-item small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.73rem;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .controls {
@@ -691,5 +786,14 @@ h1 {
 
   .capture-card video {
     width: 100%;
+  }
+
+  .health-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .health-grid {
+    grid-template-columns: 1fr;
   }
 }

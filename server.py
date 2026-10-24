@@ -10,6 +10,7 @@ import os
 import queue
 import re
 import secrets
+import shutil
 import subprocess
 import threading
 import time
@@ -145,6 +146,134 @@ def parse_utc_datetime(value):
         return parsed
     except (AttributeError, ValueError):
         return datetime.now(timezone.utc)
+
+
+def format_health_bytes(value):
+    gibibyte = 1024 ** 3
+    if value >= gibibyte:
+        return f"{value / gibibyte:.1f} GB"
+    return f"{value / (1024 ** 2):.0f} MB"
+
+
+def health_item(label, value, detail, status):
+    return {
+        "label": label,
+        "value": value,
+        "detail": detail,
+        "status": status,
+    }
+
+
+def read_cpu_temperature():
+    try:
+        raw_temperature = Path("/sys/class/thermal/thermal_zone0/temp").read_text(encoding="utf-8")
+        return float(raw_temperature.strip()) / 1000
+    except (FileNotFoundError, OSError, ValueError):
+        return None
+
+
+def get_power_health():
+    try:
+        result = subprocess.run(
+            ["vcgencmd", "get_throttled"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+        match = re.search(r"0x([0-9a-fA-F]+)", result.stdout)
+        if result.returncode != 0 or not match:
+            raise ValueError("Unable to read throttling state")
+        flags = int(match.group(1), 16)
+    except (FileNotFoundError, OSError, subprocess.TimeoutExpired, ValueError):
+        return health_item("Power", "Unavailable", "Power status could not be read", "warning")
+
+    if flags & 0xF:
+        return health_item("Power", "Issue detected", f"Active flag: 0x{flags:x}", "critical")
+    if flags & 0xF0000:
+        return health_item("Power", "Past warning", f"Flag since boot: 0x{flags:x}", "warning")
+    return health_item("Power", "Healthy", "No throttling or undervoltage", "good")
+
+
+def get_audio_health():
+    if not audio_enabled:
+        return health_item("Microphone", "Disabled", "Audio recording is turned off", "good")
+
+    device_match = re.fullmatch(r"(?:plughw|hw):(\d+),(\d+)", AUDIO_DEVICE)
+    if not device_match:
+        return health_item("Microphone", "Configured", AUDIO_DEVICE, "warning")
+
+    card_number, device_number = device_match.groups()
+    capture_device = Path(f"/proc/asound/card{card_number}/pcm{device_number}c")
+    if capture_device.exists():
+        return health_item("Microphone", "Connected", AUDIO_DEVICE, "good")
+    return health_item("Microphone", "Not found", AUDIO_DEVICE, "critical")
+
+
+def get_system_health():
+    items = []
+    temperature = read_cpu_temperature()
+    if temperature is None:
+        items.append(health_item("Temperature", "Unavailable", "Temperature could not be read", "warning"))
+    elif temperature >= 80:
+        items.append(health_item("Temperature", f"{temperature:.1f}°C", "Pi may be throttling", "critical"))
+    elif temperature >= 70:
+        items.append(health_item("Temperature", f"{temperature:.1f}°C", "Cooling recommended", "warning"))
+    else:
+        items.append(health_item("Temperature", f"{temperature:.1f}°C", "Within normal range", "good"))
+
+    items.append(get_power_health())
+
+    try:
+        storage = shutil.disk_usage(DATA_DIR)
+        free_ratio = storage.free / storage.total if storage.total else 0
+        if storage.free < 1024 ** 3 or free_ratio < 0.05:
+            storage_status = "critical"
+            storage_detail = "Recording storage is almost full"
+        elif storage.free < 3 * 1024 ** 3 or free_ratio < 0.15:
+            storage_status = "warning"
+            storage_detail = "Recording storage is running low"
+        else:
+            storage_status = "good"
+            storage_detail = f"{free_ratio:.0%} of disk available"
+        items.append(
+            health_item("Storage", f"{format_health_bytes(storage.free)} free", storage_detail, storage_status)
+        )
+    except OSError:
+        items.append(health_item("Storage", "Unavailable", "Recording storage could not be read", "critical"))
+
+    video_path = Path(VIDEO_DEVICE)
+    if not video_path.exists():
+        items.append(health_item("Camera", "Not found", VIDEO_DEVICE, "critical"))
+    elif not os.access(video_path, os.R_OK | os.W_OK):
+        items.append(health_item("Camera", "Permission denied", VIDEO_DEVICE, "critical"))
+    else:
+        items.append(health_item("Camera", "Connected", VIDEO_DEVICE, "good"))
+
+    items.append(get_audio_health())
+
+    if motion_sensor_status.get("enabled"):
+        items.append(health_item("Motion sensor", "Connected", f"BCM GPIO{PIR_GPIO_PIN}", "good"))
+    else:
+        sensor_error = motion_sensor_status.get("error") or "Sensor could not be initialized"
+        items.append(health_item("Motion sensor", "Unavailable", sensor_error, "critical"))
+
+    if last_recording_error:
+        items.append(health_item("Recorder", "Last attempt failed", last_recording_error, "critical"))
+    else:
+        items.append(health_item("Recorder", "Ready", f"{VIDEO_SIZE} at {FRAMERATE} FPS", "good"))
+
+    status_rank = {"good": 0, "warning": 1, "critical": 2}
+    overall_status = max((item["status"] for item in items), key=status_rank.get)
+    overall_labels = {
+        "good": "All systems operational",
+        "warning": "Monitor system",
+        "critical": "Needs attention",
+    }
+    return {
+        "status": overall_status,
+        "label": overall_labels[overall_status],
+        "items": items,
+    }
 
 
 def capture_path(capture):
@@ -651,6 +780,7 @@ class SecurityHandler(SimpleHTTPRequestHandler):
                     "audioEnabled": audio_enabled,
                     "inputFormat": INPUT_FORMAT,
                     "uptimeSeconds": int(time.monotonic() - SERVER_STARTED_AT),
+                    "health": get_system_health(),
                 }
             )
             return

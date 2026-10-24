@@ -19,6 +19,7 @@ This project initially started as a joke. I had a bit of a silly problem being t
 - Automatically delete non-favorite recordings after 15 days.
 - Require a dashboard username and password.
 - Notify an open dashboard when a new recording is saved.
+- Show overall health, temperature, power, storage, and connected-device status.
 - Run automatically at boot with `systemd`.
 
 ## Requirements
