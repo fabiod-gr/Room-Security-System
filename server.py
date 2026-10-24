@@ -407,6 +407,34 @@ def safe_filename(name):
     return cleaned or "capture.webm"
 
 
+def parse_byte_range(value, file_size):
+    if not value:
+        return None
+
+    match = re.fullmatch(r"bytes=(\d*)-(\d*)", value.strip())
+    if not match or file_size <= 0:
+        raise ValueError("Invalid byte range")
+
+    start_text, end_text = match.groups()
+    if not start_text and not end_text:
+        raise ValueError("Invalid byte range")
+
+    if start_text:
+        start = int(start_text)
+        end = int(end_text) if end_text else file_size - 1
+        if start >= file_size or end < start:
+            raise ValueError("Unsatisfiable byte range")
+        end = min(end, file_size - 1)
+    else:
+        suffix_length = int(end_text)
+        if suffix_length <= 0:
+            raise ValueError("Invalid suffix range")
+        start = max(0, file_size - suffix_length)
+        end = file_size - 1
+
+    return start, end
+
+
 def unique_capture_name(extension=".webm"):
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     extension = extension if extension.startswith(".") else f".{extension}"
@@ -707,6 +735,81 @@ class SecurityHandler(SimpleHTTPRequestHandler):
         body = self.rfile.read(length)
         return json.loads(body.decode("utf-8"))
 
+    def serve_capture(self, target, head_only=False):
+        file_size = target.stat().st_size
+        content_type = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
+
+        try:
+            byte_range = parse_byte_range(self.headers.get("Range"), file_size)
+        except ValueError:
+            self.send_response(416)
+            self.send_header("Accept-Ranges", "bytes")
+            self.send_header("Content-Range", f"bytes */{file_size}")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+
+        if byte_range is None:
+            start, end = 0, file_size - 1
+            self.send_response(200)
+        else:
+            start, end = byte_range
+            self.send_response(206)
+            self.send_header("Content-Range", f"bytes {start}-{end}/{file_size}")
+
+        content_length = max(0, end - start + 1)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Accept-Ranges", "bytes")
+        self.send_header("Content-Length", str(content_length))
+        self.end_headers()
+
+        if head_only or content_length == 0:
+            return
+
+        try:
+            with target.open("rb") as file:
+                file.seek(start)
+                remaining = content_length
+                while remaining:
+                    chunk = file.read(min(64 * 1024, remaining))
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
+                    remaining -= len(chunk)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+
+    def do_HEAD(self):
+        parsed = urlparse(self.path)
+        if parsed.path == "/login":
+            if not auth_enabled():
+                self.send_response(302)
+                self.send_header("Location", "/")
+                self.end_headers()
+                return
+            self.path = "/login.html"
+            return super().do_HEAD()
+
+        if parsed.path in {"/styles.css", "/favicon.ico", "/login.js"}:
+            return super().do_HEAD()
+
+        if not self.is_authenticated():
+            self.send_auth_required()
+            return
+
+        if parsed.path.startswith("/captures/"):
+            filename = safe_filename(unquote(parsed.path.removeprefix("/captures/")))
+            target = CAPTURE_DIR / filename
+            if not target.exists() or not target.is_file():
+                self.send_error(404, "Capture not found")
+                return
+            self.serve_capture(target, head_only=True)
+            return
+
+        if parsed.path == "/":
+            self.path = "/index.html"
+        return super().do_HEAD()
+
     def do_GET(self):
         parsed = urlparse(self.path)
         if parsed.path == "/login":
@@ -791,13 +894,7 @@ class SecurityHandler(SimpleHTTPRequestHandler):
             if not target.exists() or not target.is_file():
                 self.send_error(404, "Capture not found")
                 return
-            content_type = mimetypes.guess_type(target.name)[0] or "video/webm"
-            self.send_response(200)
-            self.send_header("Content-Type", content_type)
-            self.send_header("Content-Length", str(target.stat().st_size))
-            self.end_headers()
-            with target.open("rb") as file:
-                self.wfile.write(file.read())
+            self.serve_capture(target)
             return
 
         if parsed.path == "/":
